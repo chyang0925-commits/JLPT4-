@@ -150,6 +150,11 @@ rt{font-size:0.6em;color:var(--tx2);font-family:'Noto Sans JP',sans-serif;line-h
 .empty-icon{font-size:48px;margin-bottom:12px;}
 .empty-text{font-size:15px;}
 .qz-info-bar{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--tx2);margin-bottom:12px;}
+.random-badge{display:inline-block;background:linear-gradient(135deg,#f97316,#a855f7);color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;margin-left:8px;}
+.mode-toggle{display:flex;gap:8px;margin-bottom:14px;}
+.mode-btn{flex:1;padding:10px;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid var(--bg3);background:var(--bg2);color:var(--tx2);transition:all .2s;}
+.mode-btn.active{border-color:var(--or);background:var(--or);color:#fff;}
+.mode-btn.active.pu{border-color:#a855f7;background:#a855f7;}
 .qz-timer{display:flex;align-items:center;gap:8px;}
 .qz-timer-bar{flex:1;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;}
 .qz-timer-fill{height:100%;border-radius:3px;transition:width .1s linear;}
@@ -1737,6 +1742,9 @@ function App() {
   const [pracSetIdx, setPracSetIdx] = useState(0);
   const [vocabFilter, setVocabFilter] = useState('all');
   const [kanjiFilter, setKanjiFilter] = useState('all');
+  const [quizRandom, setQuizRandom] = useState(false);
+  const [kanjiRandom, setKanjiRandom] = useState(false);
+  const [pracRandom, setPracRandom] = useState(false);
   const [wrongV, setWrongV] = useState({ 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set(), 6: new Set() });
   const [wrongP, setWrongP] = useState({ 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set(), 6: new Set() });
 
@@ -1748,6 +1756,8 @@ function App() {
   }, []);
 
   const vocab = lesson === 1 ? V1 : lesson === 2 ? V2 : lesson === 3 ? V3 : lesson === 4 ? V4 : lesson === 5 ? V5 : V6;
+  const allVocab = useMemo(() => [...V1,...V2,...V3,...V4,...V5,...V6], []);
+  const allProbs = useMemo(() => [...P1,...P2,...P3,...P4,...P5,...P6], []);
   const probs = lesson === 1 ? P1 : lesson === 2 ? P2 : lesson === 3 ? P3 : lesson === 4 ? P4 : lesson === 5 ? P5 : P6;
 
   const goHome = () => setScreen('home');
@@ -1762,11 +1772,11 @@ function App() {
   return (
     <div className="app">
       {screen === 'home' && <HomeScreen onSelect={goMenu} onKanji={() => setScreen('kanji')} wrongCounts={{ 1: wrongV[1].size, 2: wrongV[2].size, 3: wrongV[3].size, 4: wrongV[4].size, 5: wrongV[5].size, 6: wrongV[6].size }} />}
-      {screen === 'kanji' && <KanjiScreen filter={kanjiFilter} setFilter={setKanjiFilter} onBack={() => setScreen(screen === 'kanji' ? 'home' : 'menu')} />}
-      {screen === 'menu' && <MenuScreen lesson={lesson} probs={probs} vocab={vocab} wrongVCount={wrongVCount} wrongPCount={wrongPCount} onBack={goHome} onVocab={() => setScreen('vocab')} onQuiz={(t) => { setQuizType(t); setScreen('quiz'); }} onPractice={() => setScreen('practice')} onWrong={() => setScreen('wrong')} onKanji={() => setScreen('kanji')} />}
+      {screen === 'kanji' && <KanjiScreen filter={kanjiFilter} setFilter={setKanjiFilter} isRandom={kanjiRandom} setIsRandom={setKanjiRandom} onBack={() => setScreen(screen === 'kanji' ? 'home' : 'menu')} />}
+      {screen === 'menu' && <MenuScreen lesson={lesson} probs={probs} vocab={vocab} wrongVCount={wrongVCount} wrongPCount={wrongPCount} onBack={goHome} onVocab={() => setScreen('vocab')} onQuiz={(t) => { setQuizType(t); setScreen('quiz'); }} onPractice={() => setScreen('practice')} onWrong={() => setScreen('wrong')} onKanji={() => setScreen('kanji')} quizRandom={quizRandom} setQuizRandom={setQuizRandom} pracRandom={pracRandom} setPracRandom={setPracRandom} />}
       {screen === 'vocab' && <VocabScreen vocab={vocab} lesson={lesson} wrongSet={wrongV[lesson]} filter={vocabFilter} setFilter={setVocabFilter} onAddWrong={addWrongV} onRemoveWrong={removeWrongV} onBack={() => setScreen('menu')} />}
-      {screen === 'quiz' && <QuizScreen vocab={vocab} lesson={lesson} quizType={quizType} onAddWrong={addWrongV} onBack={() => setScreen('menu')} />}
-      {screen === 'practice' && <PracticeSetScreen probs={probs} lesson={lesson} wrongSet={wrongP[lesson]} onBack={() => setScreen('menu')} onSelect={(i) => { setPracSetIdx(i); setScreen('pracSolve'); }} />}
+      {screen === 'quiz' && <QuizScreen vocab={quizRandom ? allVocab : vocab} lesson={lesson} quizType={quizType} isRandom={quizRandom} onAddWrong={addWrongV} onBack={() => setScreen('menu')} />}
+      {screen === 'practice' && <PracticeSetScreen probs={probs} allProbs={allProbs} lesson={lesson} wrongSet={wrongP[lesson]} isRandom={pracRandom} setIsRandom={setPracRandom} onBack={() => setScreen('menu')} onSelect={(i) => { setPracSetIdx(i); setScreen('pracSolve'); }} />}
       {screen === 'pracSolve' && <PracticeSolveScreen probSet={probs[pracSetIdx]} lesson={lesson} wrongSet={wrongP[lesson]} onAddWrong={addWrongP} onRemoveWrong={removeWrongP} onBack={() => setScreen('practice')} />}
       {screen === 'wrong' && <WrongScreen vocab={vocab} wrongVIdx={wrongV[lesson]} wrongPKeys={wrongP[lesson]} probs={probs} onBack={() => setScreen('menu')} onClearVocab={removeWrongV} />}
     </div>
@@ -1826,7 +1836,7 @@ function HomeScreen({ onSelect, onKanji, wrongCounts }) {
 }
 
 /* ─── MENU ─────────────────────────────────────────────────────────── */
-function MenuScreen({ lesson, probs, vocab, wrongVCount, wrongPCount, onBack, onVocab, onQuiz, onPractice, onWrong, onKanji }) {
+function MenuScreen({ lesson, probs, vocab, wrongVCount, wrongPCount, onBack, onVocab, onQuiz, onPractice, onWrong, onKanji, quizRandom, setQuizRandom, pracRandom, setPracRandom }) {
   const totalWrong = wrongVCount + wrongPCount;
   return (
     <div>
@@ -1841,7 +1851,14 @@ function MenuScreen({ lesson, probs, vocab, wrongVCount, wrongPCount, onBack, on
         <div className="menu-cell" onClick={() => onQuiz(1)}><div className="menu-icon">🔤</div><div className="menu-label">퀴즈 ①</div><div className="menu-hint">히라가나 → 한국어</div></div>
         <div className="menu-cell" onClick={() => onQuiz(2)}><div className="menu-icon">漢</div><div className="menu-label">퀴즈 ②</div><div className="menu-hint">한자 → 한국어</div></div>
         <div className="menu-cell" onClick={() => onQuiz(3)}><div className="menu-icon">✍️</div><div className="menu-label">퀴즈 ③</div><div className="menu-hint">히라가나 → 한자</div></div>
-        <div className="menu-cell full" onClick={onPractice}><div className="menu-icon">📝</div><div className="menu-label">실전문제풀이</div><div className="menu-hint">{probs.length}세트 · 총 {probs.length * 10}문항</div></div>
+        <div className="menu-cell full" style={{padding:'12px 16px'}}>
+          <div style={{fontSize:'12px',color:'var(--tx2)',fontWeight:'600',marginBottom:'8px'}}>🎲 퀴즈 범위 선택</div>
+          <div style={{display:'flex',gap:'8px'}}>
+            <button onClick={() => setQuizRandom(false)} style={{flex:1,padding:'8px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',cursor:'pointer',border:'2px solid',borderColor:!quizRandom?'var(--or)':'var(--bg3)',background:!quizRandom?'var(--or)':'var(--bg3)',color:!quizRandom?'#fff':'var(--tx2)'}}>이 과만</button>
+            <button onClick={() => setQuizRandom(true)} style={{flex:1,padding:'8px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',cursor:'pointer',border:'2px solid',borderColor:quizRandom?'#a855f7':'var(--bg3)',background:quizRandom?'#a855f7':'var(--bg3)',color:quizRandom?'#fff':'var(--tx2)'}}>🎲 전 과목 랜덤</button>
+          </div>
+        </div>
+        <div className="menu-cell full" onClick={onPractice}><div className="menu-icon">📝</div><div className="menu-label">실전문제풀이</div><div className="menu-hint">{probs.length}세트 · {probs.length * 10}문항 · 해석 제공</div></div>
         <div className="menu-cell full danger" onClick={onWrong}><div className="menu-icon">⚠️</div><div className="menu-label">오답 복습{totalWrong > 0 && <span className="menu-badge">{totalWrong}</span>}</div><div className="menu-hint">어휘 {wrongVCount}개 · 문제 {wrongPCount}개</div></div>
       </div>
     </div>
@@ -1942,7 +1959,7 @@ function VocabScreen({ vocab, lesson, wrongSet, filter, setFilter, onAddWrong, o
 }
 
 /* ─── QUIZ ─────────────────────────────────────────────────────────── */
-function QuizScreen({ vocab, lesson, quizType, onAddWrong, onBack }) {
+function QuizScreen({ vocab, lesson, quizType, isRandom, onAddWrong, onBack }) {
   const typeLabels = ['','히라가나 → 한국어','한자 → 한국어','히라가나 → 한자'];
   const order = useMemo(() => shuffle(vocab.map((_, i) => i)), [vocab]);
   const [step, setStep] = useState(0);
@@ -2025,7 +2042,7 @@ function QuizScreen({ vocab, lesson, quizType, onAddWrong, onBack }) {
     <div>
       <div className="nav">
         <button className="nav-back" onClick={onBack}>← 메뉴</button>
-        <span className="nav-title">퀴즈 {quizType}</span>
+        <span className="nav-title">퀴즈 {quizType}{isRandom && <span className="random-badge">🎲 전체</span>}</span>
         <span className="nav-sub">{step + 1}/{order.length}</span>
       </div>
       <div className="qz-wrap">
@@ -2083,16 +2100,23 @@ function QuizScreen({ vocab, lesson, quizType, onAddWrong, onBack }) {
 }
 
 /* ─── PRACTICE SET SELECT ───────────────────────────────────────────── */
-function PracticeSetScreen({ probs, lesson, wrongSet, onBack, onSelect }) {
+function PracticeSetScreen({ probs, allProbs, lesson, wrongSet, isRandom, setIsRandom, onBack, onSelect }) {
+  const displayProbs = isRandom ? allProbs : probs;
   return (
     <div>
       <div className="nav">
         <button className="nav-back" onClick={onBack}>← 메뉴</button>
-        <span className="nav-title">실전문제풀이</span>
-        <span className="nav-sub">{probs.length}세트</span>
+        <span className="nav-title">실전문제풀이{isRandom && <span className="random-badge">🎲</span>}</span>
+        <span className="nav-sub">{displayProbs.length}세트</span>
       </div>
-      <div className="prac-sets">
-        {probs.map((ps, i) => {
+      <div style={{padding:'10px 16px 0'}}>
+        <div style={{display:'flex',gap:'8px'}}>
+          <button onClick={() => setIsRandom(false)} style={{flex:1,padding:'9px',borderRadius:'10px',fontSize:'12px',fontWeight:'700',cursor:'pointer',border:'2px solid',borderColor:!isRandom?'var(--or)':'var(--bg3)',background:!isRandom?'var(--or)':'var(--bg2)',color:!isRandom?'#fff':'var(--tx2)'}}>이 과만 ({probs.length}세트)</button>
+          <button onClick={() => setIsRandom(true)} style={{flex:1,padding:'9px',borderRadius:'10px',fontSize:'12px',fontWeight:'700',cursor:'pointer',border:'2px solid',borderColor:isRandom?'#a855f7':'var(--bg3)',background:isRandom?'#a855f7':'var(--bg2)',color:isRandom?'#fff':'var(--tx2)'}}>🎲 전 과목 ({allProbs.length}세트)</button>
+        </div>
+      </div>
+      <div className="prac-sets" style={{paddingTop:'10px'}}>
+        {displayProbs.map((ps, i) => {
           const wrongInSet = ps.qs.filter((_, qi) => wrongSet.has(`${ps.id}-${qi}`)).length;
           return (
             <div key={ps.id} className="prac-set-card" onClick={() => onSelect(i)}>
@@ -2191,17 +2215,19 @@ function PracticeSolveScreen({ probSet, lesson, wrongSet, onAddWrong, onRemoveWr
 
 
 /* ─── KANJI SCREEN ───────────────────────────────────────────────── */
-function KanjiScreen({ filter, setFilter, onBack }) {
+function KanjiScreen({ filter, setFilter, isRandom, setIsRandom, onBack }) {
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [wrongK, setWrongK] = useState(new Set());
 
   const filtered = useMemo(() => {
-    return KANJI_DB.map((k,i) => ({k,i}));
-  }, [filter]);
+    let arr = KANJI_DB.map((k,i) => ({k,i}));
+    if (isRandom) return shuffle([...arr]);
+    return arr;
+  }, [isRandom]);
 
-  useEffect(() => { setIdx(0); setFlipped(false); setShowHint(false); }, []);
+  useEffect(() => { setIdx(0); setFlipped(false); setShowHint(false); }, [isRandom]);
 
   const safeIdx = Math.min(idx, filtered.length-1);
   const { k: kanji, i: realIdx } = filtered[safeIdx];
@@ -2221,7 +2247,10 @@ function KanjiScreen({ filter, setFilter, onBack }) {
       <div className="fc-wrap">
         <div className="fc-header">
           <span className="fc-counter">{isWrong ? '⚠️ 오답' : ''}</span>
-          <span style={{fontSize:'12px',color:'var(--tx2)'}}>전 과목 핵심 한자</span>
+          <div style={{display:'flex',gap:'6px',alignItems:'center'}}>
+            <button onClick={() => { setIsRandom(false); }} style={{padding:'4px 10px',borderRadius:'8px',fontSize:'11px',fontWeight:'700',cursor:'pointer',border:'2px solid',borderColor:!isRandom?'var(--or)':'var(--bg3)',background:!isRandom?'var(--or)':'var(--bg3)',color:!isRandom?'#fff':'var(--tx2)'}}>순서대로</button>
+            <button onClick={() => { setIsRandom(true); }} style={{padding:'4px 10px',borderRadius:'8px',fontSize:'11px',fontWeight:'700',cursor:'pointer',border:'2px solid',borderColor:isRandom?'#a855f7':'var(--bg3)',background:isRandom?'#a855f7':'var(--bg3)',color:isRandom?'#fff':'var(--tx2)'}}>🎲 랜덤</button>
+          </div>
         </div>
         <div className="fc-prog">
           {filtered.slice(0, Math.min(filtered.length, 50)).map((_,i) => (
