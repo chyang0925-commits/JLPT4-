@@ -1708,6 +1708,60 @@ const P6 = [
   ]},
 ];
 
+/* ─── STORAGE HELPERS ───────────────────────────────────────────── */
+const STORAGE_KEY_V = 'jlpt_wrongV';
+const STORAGE_KEY_P = 'jlpt_wrongP';
+
+function loadWrongV() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_V);
+    if (!raw) return { 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set(), 6: new Set() };
+    const obj = JSON.parse(raw);
+    const result = {};
+    for (const k of [1,2,3,4,5,6]) {
+      result[k] = new Set(obj[k] || []);
+    }
+    return result;
+  } catch(e) {
+    return { 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set(), 6: new Set() };
+  }
+}
+
+function loadWrongP() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_P);
+    if (!raw) return { 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set(), 6: new Set() };
+    const obj = JSON.parse(raw);
+    const result = {};
+    for (const k of [1,2,3,4,5,6]) {
+      result[k] = new Set(obj[k] || []);
+    }
+    return result;
+  } catch(e) {
+    return { 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set(), 6: new Set() };
+  }
+}
+
+function saveWrongV(wrongV) {
+  try {
+    const obj = {};
+    for (const k of [1,2,3,4,5,6]) {
+      obj[k] = [...wrongV[k]];
+    }
+    localStorage.setItem(STORAGE_KEY_V, JSON.stringify(obj));
+  } catch(e) {}
+}
+
+function saveWrongP(wrongP) {
+  try {
+    const obj = {};
+    for (const k of [1,2,3,4,5,6]) {
+      obj[k] = [...wrongP[k]];
+    }
+    localStorage.setItem(STORAGE_KEY_P, JSON.stringify(obj));
+  } catch(e) {}
+}
+
 /* ─── HELPERS ─────────────────────────────────────────────────────── */
 function shuffle(arr) {
   const a = [...arr];
@@ -1743,10 +1797,9 @@ function App() {
   const [vocabFilter, setVocabFilter] = useState('all');
   const [kanjiFilter, setKanjiFilter] = useState('all');
   const [quizRandom, setQuizRandom] = useState(false);
-  const [kanjiRandom, setKanjiRandom] = useState(false);
   const [pracRandom, setPracRandom] = useState(false);
-  const [wrongV, setWrongV] = useState({ 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set(), 6: new Set() });
-  const [wrongP, setWrongP] = useState({ 1: new Set(), 2: new Set(), 3: new Set(), 4: new Set(), 5: new Set(), 6: new Set() });
+  const [wrongV, setWrongV] = useState(() => loadWrongV());
+  const [wrongP, setWrongP] = useState(() => loadWrongP());
 
   useEffect(() => {
     const el = document.createElement('style');
@@ -1754,6 +1807,9 @@ function App() {
     document.head.appendChild(el);
     return () => { if (document.head.contains(el)) document.head.removeChild(el); };
   }, []);
+
+  useEffect(() => { saveWrongV(wrongV); }, [wrongV]);
+  useEffect(() => { saveWrongP(wrongP); }, [wrongP]);
 
   const vocab = lesson === 1 ? V1 : lesson === 2 ? V2 : lesson === 3 ? V3 : lesson === 4 ? V4 : lesson === 5 ? V5 : V6;
   const allVocab = useMemo(() => [...V1,...V2,...V3,...V4,...V5,...V6], []);
@@ -1772,7 +1828,7 @@ function App() {
   return (
     <div className="app">
       {screen === 'home' && <HomeScreen onSelect={goMenu} onKanji={() => setScreen('kanji')} wrongCounts={{ 1: wrongV[1].size, 2: wrongV[2].size, 3: wrongV[3].size, 4: wrongV[4].size, 5: wrongV[5].size, 6: wrongV[6].size }} />}
-      {screen === 'kanji' && <KanjiScreen filter={kanjiFilter} setFilter={setKanjiFilter} isRandom={kanjiRandom} setIsRandom={setKanjiRandom} onBack={() => setScreen(screen === 'kanji' ? 'home' : 'menu')} />}
+      {screen === 'kanji' && <KanjiScreen onBack={() => setScreen(screen === 'kanji' ? 'home' : 'menu')} />}
       {screen === 'menu' && <MenuScreen lesson={lesson} probs={probs} vocab={vocab} wrongVCount={wrongVCount} wrongPCount={wrongPCount} onBack={goHome} onVocab={() => setScreen('vocab')} onQuiz={(t) => { setQuizType(t); setScreen('quiz'); }} onPractice={() => setScreen('practice')} onWrong={() => setScreen('wrong')} onKanji={() => setScreen('kanji')} quizRandom={quizRandom} setQuizRandom={setQuizRandom} pracRandom={pracRandom} setPracRandom={setPracRandom} />}
       {screen === 'vocab' && <VocabScreen vocab={vocab} lesson={lesson} wrongSet={wrongV[lesson]} filter={vocabFilter} setFilter={setVocabFilter} onAddWrong={addWrongV} onRemoveWrong={removeWrongV} onBack={() => setScreen('menu')} />}
       {screen === 'quiz' && <QuizScreen vocab={quizRandom ? allVocab : vocab} lesson={lesson} quizType={quizType} isRandom={quizRandom} onAddWrong={addWrongV} onBack={() => setScreen('menu')} />}
@@ -1872,9 +1928,9 @@ function VocabScreen({ vocab, lesson, wrongSet, filter, setFilter, onAddWrong, o
   const [showHint, setShowHint] = useState(false);
 
   const filtered = useMemo(() => {
-    if (filter === 'imp') return vocab.map((v, i) => ({ v, i })).filter(x => x.v[4]);
-    if (filter === 'wrong') return vocab.map((v, i) => ({ v, i })).filter(x => wrongSet.has(x.i));
-    return vocab.map((v, i) => ({ v, i }));
+    if (filter === 'imp') return shuffle(vocab.map((v, i) => ({ v, i })).filter(x => x.v[4]));
+    if (filter === 'wrong') return shuffle(vocab.map((v, i) => ({ v, i })).filter(x => wrongSet.has(x.i)));
+    return shuffle(vocab.map((v, i) => ({ v, i })));
   }, [vocab, filter, wrongSet]);
 
   useEffect(() => { setIdx(0); setFlipped(false); setShowHint(false); }, []);
@@ -2215,19 +2271,13 @@ function PracticeSolveScreen({ probSet, lesson, wrongSet, onAddWrong, onRemoveWr
 
 
 /* ─── KANJI SCREEN ───────────────────────────────────────────────── */
-function KanjiScreen({ filter, setFilter, isRandom, setIsRandom, onBack }) {
+function KanjiScreen({ onBack }) {
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [wrongK, setWrongK] = useState(new Set());
 
-  const filtered = useMemo(() => {
-    let arr = KANJI_DB.map((k,i) => ({k,i}));
-    if (isRandom) return shuffle([...arr]);
-    return arr;
-  }, [isRandom]);
-
-  useEffect(() => { setIdx(0); setFlipped(false); setShowHint(false); }, [isRandom]);
+  const filtered = useMemo(() => shuffle(KANJI_DB.map((k,i) => ({k,i}))), []);
 
   const safeIdx = Math.min(idx, filtered.length-1);
   const { k: kanji, i: realIdx } = filtered[safeIdx];
@@ -2247,10 +2297,7 @@ function KanjiScreen({ filter, setFilter, isRandom, setIsRandom, onBack }) {
       <div className="fc-wrap">
         <div className="fc-header">
           <span className="fc-counter">{isWrong ? '⚠️ 오답' : ''}</span>
-          <div style={{display:'flex',gap:'6px',alignItems:'center'}}>
-            <button onClick={() => { setIsRandom(false); }} style={{padding:'4px 10px',borderRadius:'8px',fontSize:'11px',fontWeight:'700',cursor:'pointer',border:'2px solid',borderColor:!isRandom?'var(--or)':'var(--bg3)',background:!isRandom?'var(--or)':'var(--bg3)',color:!isRandom?'#fff':'var(--tx2)'}}>순서대로</button>
-            <button onClick={() => { setIsRandom(true); }} style={{padding:'4px 10px',borderRadius:'8px',fontSize:'11px',fontWeight:'700',cursor:'pointer',border:'2px solid',borderColor:isRandom?'#a855f7':'var(--bg3)',background:isRandom?'#a855f7':'var(--bg3)',color:isRandom?'#fff':'var(--tx2)'}}>🎲 랜덤</button>
-          </div>
+          <span style={{fontSize:'12px',color:'#a855f7',fontWeight:'600'}}>🎲 랜덤 출제</span>
         </div>
         <div className="fc-prog">
           {filtered.slice(0, Math.min(filtered.length, 50)).map((_,i) => (
