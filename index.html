@@ -25,13 +25,13 @@ const { useState, useMemo, useEffect } = React;
 
 /* ─── STYLES ─────────────────────────────────────────────────────── */
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Noto+Serif+JP:wght@400;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=BIZ+UDPMincho:wght@400;700&family=Noto+Sans+KR:wght@400;500;700;900&family=Noto+Sans+JP:wght@400;500;700&display=swap');
 :root{--bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--bg4:#2d333b;--or:#f97316;--or2:#c2410c;--gn:#22c55e;--rd:#f85149;--bl:#58a6ff;--gd:#fbbf24;--tx:#e6edf3;--tx2:#8b949e;--tx3:#6e7681;}
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);color:var(--tx);font-family:'Noto Sans KR','Noto Sans JP',sans-serif;min-height:100vh;}
 .app{max-width:500px;margin:0 auto;padding-bottom:40px;min-height:100vh;}
 ruby{display:inline-ruby;ruby-align:center;}
-rt{font-size:0.6em;color:var(--tx2);font-family:'Noto Sans JP',sans-serif;line-height:1.2;}
+rt{font-size:0.6em;color:var(--tx2);font-family:'BIZ UDPMincho',serif;line-height:1.2;}
 .home-hdr{padding:48px 24px 24px;text-align:center;}
 .home-logo{font-size:64px;line-height:1;}
 .home-title{font-size:22px;font-weight:900;color:var(--or);letter-spacing:3px;margin-top:12px;}
@@ -75,7 +75,7 @@ rt{font-size:0.6em;color:var(--tx2);font-family:'Noto Sans JP',sans-serif;line-h
 .fc-card{background:var(--bg2);border:2px solid var(--bg3);border-radius:20px;min-height:260px;cursor:pointer;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px 24px;transition:all .3s;user-select:none;}
 .fc-card:active{transform:scale(.97);}
 .fc-card.flipped{border-color:var(--or);}
-.fc-kanji{font-family:'Noto Serif JP',serif;font-size:52px;font-weight:600;line-height:1.2;}
+.fc-kanji{font-family:'BIZ UDPMincho',serif;font-size:52px;font-weight:600;line-height:1.2;}
 .fc-small{font-size:28px;}
 .fc-hira{font-size:18px;color:var(--or);margin-top:10px;font-weight:500;}
 .fc-korean{font-size:22px;font-weight:700;margin-top:8px;}
@@ -97,8 +97,8 @@ rt{font-size:0.6em;color:var(--tx2);font-family:'Noto Sans JP',sans-serif;line-h
 .qz-prog-seg.wrong{background:var(--rd);}
 .qz-card{background:var(--bg2);border:2px solid var(--bg3);border-radius:16px;padding:24px;margin-bottom:14px;text-align:center;}
 .qz-type{font-size:11px;color:var(--or);font-weight:700;letter-spacing:1.5px;margin-bottom:10px;}
-.qz-word{font-family:'Noto Serif JP',serif;font-size:44px;font-weight:600;line-height:1.3;}
-.qz-word.hira{font-family:'Noto Sans JP',sans-serif;font-size:30px;}
+.qz-word{font-family:'BIZ UDPMincho',serif;font-size:44px;font-weight:600;line-height:1.3;}
+.qz-word.hira{font-family:'BIZ UDPMincho',serif;font-size:30px;}
 .qz-opts{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .qz-opt{background:var(--bg3);border:2px solid transparent;border-radius:12px;padding:14px 10px;cursor:pointer;font-size:14px;font-weight:500;transition:all .2s;text-align:center;line-height:1.5;min-height:54px;display:flex;align-items:center;justify-content:center;}
 .qz-opt:hover:not([data-disabled]){border-color:var(--or);background:var(--bg4);}
@@ -125,7 +125,7 @@ rt{font-size:0.6em;color:var(--tx2);font-family:'Noto Sans JP',sans-serif;line-h
 .prac-q-num{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
 .prac-q-n{width:26px;height:26px;background:var(--or);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;}
 .prac-imp{font-size:10px;background:var(--gd);color:#000;padding:2px 7px;border-radius:6px;font-weight:700;}
-.prac-sent{font-size:15px;line-height:2.4;margin-bottom:12px;font-family:'Noto Serif JP',serif;}
+.prac-sent{font-size:15px;line-height:2.4;margin-bottom:12px;font-family:'BIZ UDPMincho',serif;}
 .prac-ul{border-bottom:2px solid var(--or);padding-bottom:1px;font-weight:700;color:var(--or);}
 .prac-opts{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .prac-opt{background:var(--bg3);border:2px solid transparent;border-radius:10px;padding:11px 10px;cursor:pointer;font-size:14px;transition:all .2s;text-align:center;}
@@ -135,7 +135,7 @@ rt{font-size:0.6em;color:var(--tx2);font-family:'Noto Sans JP',sans-serif;line-h
 .prac-result{background:var(--bg4);border-radius:8px;padding:8px 12px;margin-top:10px;font-size:12px;color:var(--tx2);}
 .wr-list{padding:16px;}
 .wr-item{background:var(--bg2);border:1px solid var(--bg3);border-radius:12px;padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:16px;}
-.wr-kanji{font-family:'Noto Serif JP',serif;font-size:26px;font-weight:600;min-width:60px;text-align:center;}
+.wr-kanji{font-family:'BIZ UDPMincho',serif;font-size:26px;font-weight:600;min-width:60px;text-align:center;}
 .wr-info{flex:1;}
 .wr-hira{font-size:13px;color:var(--or);font-weight:500;}
 .wr-kr{font-size:16px;font-weight:700;margin-top:3px;}
@@ -2376,7 +2376,7 @@ function KanjiScreen({ onBack }) {
             <div style={{display:'flex',flexWrap:'wrap',gap:'8px'}}>
               {[...wrongK].map(i => (
                 <div key={i} style={{background:'var(--bg3)',borderRadius:'8px',padding:'8px 12px',textAlign:'center'}}>
-                  <div style={{fontFamily:"'Noto Serif JP',serif",fontSize:'22px'}}>{KANJI_DB[i][0]}</div>
+                  <div style={{fontFamily:"'BIZ UDPMincho',serif",fontSize:'22px'}}>{KANJI_DB[i][0]}</div>
                   <div style={{fontSize:'11px',color:'var(--tx2)',marginTop:'2px'}}>{KANJI_DB[i][3]}</div>
                 </div>
               ))}
@@ -2440,7 +2440,7 @@ function WrongScreen({ vocab, wrongVIdx, wrongPKeys, probs, onBack, onClearVocab
               return (
                 <div key={key} style={{background:'var(--bg2)',border:'1px solid var(--bg3)',borderRadius:'12px',padding:'14px',marginBottom:'10px'}}>
                   <div style={{fontSize:'11px',color:'var(--or)',marginBottom:'6px',fontWeight:'600'}}>{ps.title} Q{qi+1}</div>
-                  <div style={{fontSize:'14px',lineHeight:'2.4',marginBottom:'8px',fontFamily:"'Noto Serif JP',serif"}}>
+                  <div style={{fontSize:'14px',lineHeight:'2.4',marginBottom:'8px',fontFamily:"'BIZ UDPMincho',serif"}}>
                     {renderSentence(sent, ul)}
                   </div>
                   <div style={{fontSize:'14px',color:'var(--gn)',fontWeight:'700'}}>정답: {opts[ans]} ({ans+1}번)</div>
