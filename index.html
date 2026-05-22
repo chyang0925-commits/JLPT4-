@@ -83,7 +83,7 @@ rt{font-size:0.6em;color:var(--tx2);font-family:'BIZ UDPMincho',serif;line-heigh
 .fc-imp{display:inline-block;background:var(--gd);color:#000;font-size:10px;font-weight:700;padding:3px 8px;border-radius:8px;margin-bottom:8px;}
 .fc-hint-btn{margin-top:14px;padding:7px 16px;background:transparent;border:1px solid var(--or);color:var(--or);border-radius:20px;cursor:pointer;font-size:12px;transition:all .2s;}
 .fc-hint-btn:hover{background:var(--or);color:#fff;}
-.fc-hint{background:var(--bg3);border-radius:10px;padding:10px 14px;margin-top:10px;font-size:12px;color:var(--tx2);line-height:1.7;max-width:100%;}
+.fc-hint{background:var(--bg3);border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13px;color:var(--tx2);line-height:1.7;max-width:100%;}
 .fc-actions{display:flex;gap:12px;margin-top:16px;}
 .fc-action{flex:1;padding:13px;border-radius:12px;cursor:pointer;font-size:14px;font-weight:700;border:none;transition:all .2s;}
 .fc-action.miss{background:#2a1010;color:var(--rd);border:1.5px solid var(--rd);}
@@ -196,17 +196,44 @@ function RubyText({ text }) {
 // Renders sentence with underlined target word and furigana on other kanji
 function renderSentence(sent, ul) {
   if (!ul || !sent) return <RubyText text={sent} />;
+
+  // 1. 직접 매칭
   const idx = sent.indexOf(ul);
-  if (idx === -1) return <RubyText text={sent} />;
-  const before = sent.slice(0, idx);
-  const after = sent.slice(idx + ul.length);
-  return (
-    <>
-      {before && <RubyText text={before} />}
-      <span className="prac-ul">{ul}</span>
-      {after && <RubyText text={after} />}
-    </>
-  );
+  if (idx !== -1) {
+    return (
+      <>
+        {sent.slice(0, idx) && <RubyText text={sent.slice(0, idx)} />}
+        <span className="prac-ul">{ul}</span>
+        {sent.slice(idx + ul.length) && <RubyText text={sent.slice(idx + ul.length)} />}
+      </>
+    );
+  }
+
+  // 2. 후리가나 마크업 안에 포함된 경우 처리
+  // 예: ul='寒い', sent='{寒|さむ}い...' → {寒|さむ}い 를 찾아 밑줄로 교체
+  let regexStr = '';
+  for (const ch of ul) {
+    const esc = ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    regexStr += `(?:\\{${esc}\\|[^|{}]+\\}|${esc})`;
+  }
+  try {
+    const regex = new RegExp(regexStr);
+    const match = sent.match(regex);
+    if (match) {
+      const mIdx = sent.indexOf(match[0]);
+      const before = sent.slice(0, mIdx);
+      const after = sent.slice(mIdx + match[0].length);
+      return (
+        <>
+          {before && <RubyText text={before} />}
+          <span className="prac-ul">{ul}</span>
+          {after && <RubyText text={after} />}
+        </>
+      );
+    }
+  } catch(e) {}
+
+  return <RubyText text={sent} />;
 }
 
 
@@ -1351,7 +1378,7 @@ const P3 = [
     ['特別に {申告|しんこく}する ものは ありますか。','特別',['とっべす','とっべつ','とくべつ','とくべす'],2,true,'특별히 신고할 것이 있습니까?'],
     ['{学校|がっこう}の 図書館から {本|ほん}を {借|か}りました。','図書館',['としょかん','としょっかん','とうしょかん','とうしょっかん'],0,true,'학교 도서관에서 책을 빌렸습니다.'],
     ['わたしは 毎朝 7{時|じ}に {起|お}きます。','毎朝',['まいしゅう','まいつき','まいばん','まいあさ'],3,true,'나는 매일 아침 7시에 일어납니다.'],
-    ['死んだと おもって いた むしが きゅうに 動きだしました。','動きだした',['なき','うごき','あるき','はたらき'],1,true,'죽었다고 생각했던 벌레가 갑자기 움직이기 시작했습니다.'],
+    ['死んだと おもって いた むしが きゅうに 動きだしました。','動きだし',['なき','うごき','あるき','はたらき'],1,true,'죽었다고 생각했던 벌레가 갑자기 움직이기 시작했습니다.'],
   ]},
   { id:19, title:'확인문제 19', qs:[
     ['今年は {毎日|まいにち}{日記|にっき}を {書|か}こう。','今年',['こんど','まいど','まいとし','ことし'],3,true,'올해는 매일 일기를 쓰자.'],
@@ -1444,7 +1471,7 @@ const P3 = [
 // 한자표기 확인문제 26~30
 const P4 = [
   { id:26, title:'확인문제 26 ✍️', qs:[
-    ['{紙|かみ}と えんぴつを {持|も}って きて ください。','しろい',['青い','赤い','黒い','白い'],3,true,'하얀 종이와 연필을 가져와 주세요.'],
+    ['しろい {紙|かみ}と えんぴつを {持|も}って きて ください。','しろい',['青い','赤い','黒い','白い'],3,true,'하얀 종이와 연필을 가져와 주세요.'],
     ['その まどを しめて ください。','しめて',['閑めて','開けて','閉めて','問めて'],2,true,'그 창문을 닫아 주세요.'],
     ['かぜを ひかないように ちゅういして ください。','ちゅうい',['駐異','駐意','注異','注意'],3,true,'감기에 걸리지 않도록 주의해 주세요.'],
     ['りょうの しょくどうで ごはんを {食|た}べます。','しょくどう',['食堂','飲堂','食虫','飲堂'],0,true,'기숙사 식당에서 밥을 먹습니다.'],
@@ -2299,18 +2326,25 @@ function KanjiScreen({ onBack }) {
           <span className="fc-counter">{isWrong ? '⚠️ 오답' : ''}</span>
           <span style={{fontSize:'12px',color:'#a855f7',fontWeight:'600'}}>🎲 랜덤 출제</span>
         </div>
-        <div className="fc-prog">
-          {filtered.slice(0, Math.min(filtered.length, 50)).map((_,i) => (
-            <div key={i} className="fc-prog-seg"
-              style={i < safeIdx ? {background:'#a855f7'} : {}} />
-          ))}
+        <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'14px'}}>
+          <div style={{flex:1,height:'6px',background:'var(--bg3)',borderRadius:'3px',overflow:'hidden'}}>
+            <div style={{
+              height:'100%',borderRadius:'3px',
+              background:'linear-gradient(90deg,#a855f7,#f97316)',
+              width:`${Math.round((safeIdx/filtered.length)*100)}%`,
+              transition:'width .3s'
+            }}/>
+          </div>
+          <span style={{fontSize:'12px',color:'#a855f7',fontWeight:'700',whiteSpace:'nowrap',minWidth:'80px',textAlign:'right'}}>
+            {safeIdx+1} / {filtered.length} ({Math.round(((safeIdx+1)/filtered.length)*100)}%)
+          </span>
         </div>
         <div className="fc-card" style={flipped?{borderColor:'#a855f7'}:{}}
           onClick={() => { setFlipped(f => !f); setShowHint(false); }}>
           {!flipped ? (
             <>
               <div className="fc-kanji" style={{fontSize:'80px'}}>{kanji[0]}</div>
-              <div style={{fontSize:'12px',color:'var(--tx3)',marginTop:'10px'}}>
+              <div style={{fontSize:'13px',color:'var(--tx3)',marginTop:'10px'}}>
                 이 한자의 모양이 기억나지 않으면?
               </div>
               {!showHint ? (
@@ -2327,16 +2361,16 @@ function KanjiScreen({ onBack }) {
           ) : (
             <>
               <div className="fc-kanji" style={{fontSize:'36px'}}>{kanji[0]}</div>
-              <div style={{fontSize:'22px',fontWeight:'700',marginTop:'10px',color:'var(--tx)'}}>{kanji[3]}</div>
-              <div style={{fontSize:'12px',color:'var(--tx2)',marginTop:'10px'}}>
-                {kanji[1] && <span style={{background:'var(--bg4)',padding:'2px 8px',borderRadius:'6px',margin:'0 3px'}}>
+              <div style={{fontSize:'24px',fontWeight:'700',marginTop:'10px',color:'var(--tx)'}}>{kanji[3]}</div>
+              <div style={{fontSize:'13px',color:'var(--tx2)',marginTop:'10px'}}>
+                {kanji[1] && <span style={{background:'var(--bg4)',padding:'3px 9px',borderRadius:'6px',margin:'0 3px'}}>
                   音 {kanji[1]}
                 </span>}
-                {kanji[2] && <span style={{background:'var(--bg4)',padding:'2px 8px',borderRadius:'6px',margin:'0 3px'}}>
+                {kanji[2] && <span style={{background:'var(--bg4)',padding:'3px 9px',borderRadius:'6px',margin:'0 3px'}}>
                   訓 {kanji[2]}
                 </span>}
               </div>
-              <div style={{fontSize:'11px',color:'var(--tx3)',marginTop:'10px',
+              <div style={{fontSize:'12px',color:'var(--tx3)',marginTop:'10px',
                 borderTop:'1px solid var(--bg4)',paddingTop:'8px'}}>
                 예) {kanji[5]}
               </div>
