@@ -2236,11 +2236,17 @@ function VocabScreen(_ref5) {
       });
       setShowHint(false);
     }
-  }, word[4] && /*#__PURE__*/React.createElement("div", {
+  }, lesson !== 15 && word[4] && /*#__PURE__*/React.createElement("div", {
     className: "fc-imp"
-  }, "\u2B50 \uC911\uC694"), !flipped ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, "\u2B50 \uC911\uC694"), lesson === 15 && word[3] && /*#__PURE__*/React.createElement("div", {
+    className: "fc-imp",
+    style: {
+      background: 'var(--or)',
+      color: '#fff'
+    }
+  }, word[3]), !flipped ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "fc-kanji"
-  }, word[0]), word[3] && !showHint && /*#__PURE__*/React.createElement("button", {
+  }, word[0]), word[3] && !showHint && lesson !== 15 && /*#__PURE__*/React.createElement("button", {
     className: "fc-hint-btn",
     onClick: function onClick(e) {
       e.stopPropagation();
@@ -2259,7 +2265,7 @@ function VocabScreen(_ref5) {
     className: "fc-hira"
   }, word[1]), /*#__PURE__*/React.createElement("div", {
     className: "fc-korean"
-  }, word[2]), word[3] && !showHint && /*#__PURE__*/React.createElement("button", {
+  }, word[2]), word[3] && !showHint && lesson !== 15 && /*#__PURE__*/React.createElement("button", {
     className: "fc-hint-btn",
     onClick: function onClick(e) {
       e.stopPropagation();
@@ -2480,13 +2486,24 @@ function QuizScreen(_ref6) {
     className: "qz-type"
   }, typeLabels[quizType]), /*#__PURE__*/React.createElement("div", {
     className: "qz-word ".concat(quizType !== 2 ? 'hira' : '')
-  }, quizType === 2 ? word[0] : word[1]), word[4] && /*#__PURE__*/React.createElement("div", {
+  }, quizType === 2 ? word[0] : word[1]), lesson !== 15 && word[4] && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: '11px',
       color: 'var(--gd)',
       marginTop: '8px'
     }
-  }, "\u2B50 \uC911\uC694 \uC5B4\uD718")), /*#__PURE__*/React.createElement("div", {
+  }, "\u2B50 \uC911\uC694 \uC5B4\uD718"), lesson === 15 && word[3] && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'inline-block',
+      fontSize: '12px',
+      fontWeight: '700',
+      color: '#fff',
+      background: 'var(--or)',
+      padding: '3px 12px',
+      borderRadius: '10px',
+      marginTop: '10px'
+    }
+  }, word[3])), /*#__PURE__*/React.createElement("div", {
     className: "qz-opts"
   }, opts.map(function (opt, oi) {
     var cls = 'qz-opt';
