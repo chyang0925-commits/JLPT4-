@@ -765,86 +765,43 @@ var P6 = [{
 /* ─── STORAGE HELPERS ───────────────────────────────────────────── */
 var STORAGE_KEY_V = 'jlpt_wrongV';
 var STORAGE_KEY_P = 'jlpt_wrongP';
+var LESSON_KEYS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 function loadWrongV() {
+  var result = {};
+  var obj = {};
   try {
     var raw = localStorage.getItem(STORAGE_KEY_V);
-    if (!raw) return {
-      1: new Set(),
-      2: new Set(),
-      3: new Set(),
-      4: new Set(),
-      5: new Set(),
-      6: new Set()
-    };
-    var obj = JSON.parse(raw);
-    var result = {};
-    for (var _i = 0, _arr = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]; _i < _arr.length; _i++) {
-      var k = _arr[_i];
-      result[k] = new Set(obj[k] || []);
-    }
-    return result;
+    if (raw) obj = JSON.parse(raw) || {};
   } catch (e) {
-    return {
-      1: new Set(),
-      2: new Set(),
-      3: new Set(),
-      4: new Set(),
-      5: new Set(),
-      6: new Set(),
-      7: new Set(),
-      8: new Set(),
-      9: new Set(),
-      10: new Set(),
-      11: new Set(),
-      12: new Set(),
-      13: new Set(),
-      14: new Set()
-    };
+    obj = {};
   }
+  for (var _i = 0; _i < LESSON_KEYS.length; _i++) {
+    var k = LESSON_KEYS[_i];
+    result[k] = new Set(obj[k] || []);
+  }
+  return result;
 }
 function loadWrongP() {
+  var result = {};
+  var obj = {};
   try {
     var raw = localStorage.getItem(STORAGE_KEY_P);
-    if (!raw) return {
-      1: new Set(),
-      2: new Set(),
-      3: new Set(),
-      4: new Set(),
-      5: new Set(),
-      6: new Set()
-    };
-    var obj = JSON.parse(raw);
-    var result = {};
-    for (var _i2 = 0, _arr2 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]; _i2 < _arr2.length; _i2++) {
-      var k = _arr2[_i2];
-      result[k] = new Set(obj[k] || []);
-    }
-    return result;
+    if (raw) obj = JSON.parse(raw) || {};
   } catch (e) {
-    return {
-      1: new Set(),
-      2: new Set(),
-      3: new Set(),
-      4: new Set(),
-      5: new Set(),
-      6: new Set(),
-      7: new Set(),
-      8: new Set(),
-      9: new Set(),
-      10: new Set(),
-      11: new Set(),
-      12: new Set(),
-      13: new Set(),
-      14: new Set()
-    };
+    obj = {};
   }
+  for (var _i2 = 0; _i2 < LESSON_KEYS.length; _i2++) {
+    var k = LESSON_KEYS[_i2];
+    result[k] = new Set(obj[k] || []);
+  }
+  return result;
 }
 function saveWrongV(wrongV) {
   try {
     var obj = {};
-    for (var _i3 = 0, _arr3 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]; _i3 < _arr3.length; _i3++) {
-      var k = _arr3[_i3];
-      obj[k] = _toConsumableArray(wrongV[k]);
+    for (var _i3 = 0; _i3 < LESSON_KEYS.length; _i3++) {
+      var k = LESSON_KEYS[_i3];
+      obj[k] = _toConsumableArray(wrongV[k] || new Set());
     }
     localStorage.setItem(STORAGE_KEY_V, JSON.stringify(obj));
   } catch (e) {}
@@ -852,9 +809,9 @@ function saveWrongV(wrongV) {
 function saveWrongP(wrongP) {
   try {
     var obj = {};
-    for (var _i4 = 0, _arr4 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]; _i4 < _arr4.length; _i4++) {
-      var k = _arr4[_i4];
-      obj[k] = _toConsumableArray(wrongP[k]);
+    for (var _i4 = 0; _i4 < LESSON_KEYS.length; _i4++) {
+      var k = LESSON_KEYS[_i4];
+      obj[k] = _toConsumableArray(wrongP[k] || new Set());
     }
     localStorage.setItem(STORAGE_KEY_P, JSON.stringify(obj));
   } catch (e) {}
@@ -1412,8 +1369,8 @@ function App() {
       return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, lesson, s));
     });
   };
-  var wrongVCount = wrongV[lesson].size;
-  var wrongPCount = wrongP[lesson].size;
+  var wrongVCount = (wrongV[lesson] || new Set()).size;
+  var wrongPCount = (wrongP[lesson] || new Set()).size;
   return /*#__PURE__*/React.createElement("div", {
     className: "app"
   }, screen === 'home' && /*#__PURE__*/React.createElement(HomeScreen, {
@@ -1435,9 +1392,10 @@ function App() {
       11: wrongV[11].size,
       12: wrongV[12].size,
       13: wrongV[13].size,
-      14: wrongV[14].size
+      14: wrongV[14].size,
+      15: (wrongV[15] || new Set()).size
     }
-  }), screen === 'kanji' && /*#__PURE__*/React.createElement(KanjiScreen, {
+  }), screen === 'kanji' &&/*#__PURE__*/React.createElement(KanjiScreen, {
     onBack: function onBack() {
       return setScreen(screen === 'kanji' ? 'home' : 'menu');
     }
