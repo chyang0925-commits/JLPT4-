@@ -1335,7 +1335,7 @@ function App() {
     return [].concat(V1, V2, V3, V4, V5, V6, V7, V8, V9);
   }, []);
   var allProbs = useMemo(function () {
-    return [].concat(P1, P2, P3, P4, P5, P6, P7, P8, P9);
+    return [].concat(P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14, P15);
   }, []);
   var probs = lesson === 1 ? P1 : lesson === 2 ? P2 : lesson === 3 ? P3 : lesson === 4 ? P4 : lesson === 5 ? P5 : lesson === 6 ? P6 : lesson === 7 ? P7 : lesson === 8 ? P8 : lesson === 9 ? P9 : lesson === 10 ? P10 : lesson === 11 ? P11 : lesson === 12 ? P12 : lesson === 13 ? P13 : lesson === 14 ? P14 : P15;
   var goHome = function goHome() {
@@ -1475,7 +1475,7 @@ function App() {
       setScreen('pracSolve');
     }
   }), screen === 'pracSolve' && /*#__PURE__*/React.createElement(PracticeSolveScreen, {
-    probSet: probs[pracSetIdx],
+    probSet: (pracRandom ? allProbs : probs)[pracSetIdx],
     lesson: lesson,
     wrongSet: wrongP[lesson],
     onAddWrong: addWrongP,
@@ -2695,8 +2695,8 @@ function PracticeSolveScreen(_ref8) {
       ans = _q[3],
       imp = _q[4],
       meaning = _q[5];
-    var isSynQ = lesson === 10 || lesson === 11 || lesson === 12 || !!probSet.syn;
-    var isYoho = lesson === 13 || lesson === 14 || !!probSet.yoho;
+    var isSynQ = probSet.id >= 69 && probSet.id <= 85 || !!probSet.syn;
+    var isYoho = probSet.id >= 86 && probSet.id <= 101 || !!probSet.yoho;
     var userAns = answers[qi];
     var isAnswered = userAns !== undefined;
     return /*#__PURE__*/React.createElement("div", {
