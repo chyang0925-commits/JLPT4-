@@ -1337,6 +1337,23 @@ function App() {
   var allProbs = useMemo(function () {
     return [].concat(P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14, P15);
   }, []);
+  var searchIndex = useMemo(function () {
+    var groups = [[V1, 1, '한자읽기'], [V2, 2, '한자읽기'], [V3, 3, '한자읽기'], [V4, 4, '한자표기'], [V5, 5, '한자표기'], [V6, 6, '한자표기'], [V7, 7, '문맥규정'], [V8, 8, '문맥규정'], [V9, 9, '문맥규정'], [V10, 10, '유의표현'], [V11, 11, '유의표현'], [V12, 12, '유의표현'], [V13, 13, '용법'], [V14, 14, '용법'], [V15, 15, '종합']];
+    var out = [];
+    groups.forEach(function (g) {
+      g[0].forEach(function (r) {
+        if (!Array.isArray(r)) return;
+        out.push({
+          jp: r[0],
+          reading: r[1],
+          ko: r[2],
+          lesson: g[1],
+          label: g[2]
+        });
+      });
+    });
+    return out;
+  }, []);
   var probs = lesson === 1 ? P1 : lesson === 2 ? P2 : lesson === 3 ? P3 : lesson === 4 ? P4 : lesson === 5 ? P5 : lesson === 6 ? P6 : lesson === 7 ? P7 : lesson === 8 ? P8 : lesson === 9 ? P9 : lesson === 10 ? P10 : lesson === 11 ? P11 : lesson === 12 ? P12 : lesson === 13 ? P13 : lesson === 14 ? P14 : P15;
   var goHome = function goHome() {
     return setScreen('home');
@@ -1378,6 +1395,9 @@ function App() {
     onKanji: function onKanji() {
       return setScreen('kanji');
     },
+    onSearch: function onSearch() {
+      return setScreen('search');
+    },
     wrongCounts: {
       1: wrongV[1].size,
       2: wrongV[2].size,
@@ -1398,6 +1418,11 @@ function App() {
   }), screen === 'kanji' &&/*#__PURE__*/React.createElement(KanjiScreen, {
     onBack: function onBack() {
       return setScreen(screen === 'kanji' ? 'home' : 'menu');
+    }
+  }), screen === 'search' && /*#__PURE__*/React.createElement(SearchScreen, {
+    index: searchIndex,
+    onBack: function onBack() {
+      return setScreen('home');
     }
   }), screen === 'menu' && /*#__PURE__*/React.createElement(MenuScreen, {
     lesson: lesson,
@@ -1499,6 +1524,7 @@ function App() {
 function HomeScreen(_ref3) {
   var onSelect = _ref3.onSelect,
     onKanji = _ref3.onKanji,
+    onSearch = _ref3.onSearch,
     wrongCounts = _ref3.wrongCounts;
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "home-hdr"
@@ -1717,6 +1743,34 @@ function HomeScreen(_ref3) {
       color: '#a855f7'
     }
   }, "\uD83C\uDE33 \uD55C\uC790 ", KANJI_DB.length, "\uC790 \xB7 \uC804 \uACFC\uBAA9 \uD1B5\uD569 \xB7 \uBAA8\uC591 \uD78C\uD2B8")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: 'var(--tx3)',
+      fontSize: '20px'
+    }
+  }, "\u203A")), /*#__PURE__*/React.createElement("div", {
+    className: "lesson-card",
+    onClick: onSearch,
+    style: {
+      borderColor: 'var(--bl)'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "lesson-badge",
+    style: {
+      background: 'var(--bl)',
+      fontSize: '24px'
+    }
+  }, "\uD83D\uDD0D"), /*#__PURE__*/React.createElement("div", {
+    className: "lesson-info"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "lesson-name"
+  }, "\uC5B4\uD718 \uD1B5\uD569 \uAC80\uC0C9"), /*#__PURE__*/React.createElement("div", {
+    className: "lesson-year"
+  }, "\uC804 \uACFC\uBAA9 \uC5B4\uD718\uB97C \uD55C \uBC88\uC5D0"), /*#__PURE__*/React.createElement("div", {
+    className: "lesson-wc",
+    style: {
+      color: 'var(--bl)'
+    }
+  }, "\uD55C\uC790 \u00B7 \uD788\uB77C\uAC00\uB098 \u00B7 \uB73B\uC73C\uB85C \uAC80\uC0C9")), /*#__PURE__*/React.createElement("div", {
     style: {
       color: 'var(--tx3)',
       fontSize: '20px'
@@ -2311,7 +2365,11 @@ function QuizScreen(_ref6) {
     onAddWrong = _ref6.onAddWrong,
     onBack = _ref6.onBack;
   var typeLabels = ['', '히라가나 → 한국어', '한자 → 한국어', '히라가나 → 한자'];
+  var _retry = useState(null),
+    retryIdxs = _retry[0],
+    setRetryIdxs = _retry[1];
   var order = useMemo(function () {
+    if (retryIdxs && retryIdxs.length) return shuffle(retryIdxs.slice());
     var idxs = vocab.map(function (_, i) {
       return i;
     });
@@ -2320,7 +2378,7 @@ function QuizScreen(_ref6) {
       return vocab[i][0] !== vocab[i][1];
     });
     return shuffle(idxs);
-  }, [vocab, quizType]);
+  }, [vocab, quizType, retryIdxs]);
   var _useState25 = useState(0),
     _useState26 = _slicedToArray(_useState25, 2),
     step = _useState26[0],
@@ -2387,6 +2445,9 @@ function QuizScreen(_ref6) {
       return r;
     }).length;
     var pct = Math.round(correct / results.length * 100);
+    var wrongIdxs = order.filter(function (o, i) {
+      return results[i] === false;
+    });
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "nav"
     }, /*#__PURE__*/React.createElement("button", {
@@ -2419,12 +2480,27 @@ function QuizScreen(_ref6) {
     }, "\uC624\uB2F5"))), /*#__PURE__*/React.createElement("button", {
       className: "btn btn-or mt16",
       onClick: function onClick() {
+        setRetryIdxs(null);
         setStep(0);
         setSelected(null);
         setResults([]);
         setDone(false);
       }
-    }, "\uD83D\uDD04 \uB2E4\uC2DC \uD480\uAE30"), /*#__PURE__*/React.createElement("button", {
+    }, "\uD83D\uDD04 \uB2E4\uC2DC \uD480\uAE30"), wrongIdxs.length > 0 && /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-ghost mt8",
+      style: {
+        borderColor: 'var(--rd)',
+        color: 'var(--rd)'
+      },
+      onClick: function onClick() {
+        setRetryIdxs(wrongIdxs);
+        setStep(0);
+        setSelected(null);
+        setResults([]);
+        setDone(false);
+        setTimer(10);
+      }
+    }, "\u274C \uC624\uB2F5\uB9CC \uB2E4\uC2DC \uD480\uAE30 (", wrongIdxs.length, ")"), /*#__PURE__*/React.createElement("button", {
       className: "btn btn-ghost mt8",
       onClick: onBack
     }, "\uBA54\uB274\uB85C")));
@@ -2777,17 +2853,61 @@ function PracticeSolveScreen(_ref8) {
         style: {
           lineHeight: '1.7'
         }
-      }, optJP), isAnswered && optKO && /*#__PURE__*/React.createElement("div", {
+      }, optJP), isAnswered && optKO && optKO.replace(/\s*\u2705\s*$/, '').trim() !== '' && /*#__PURE__*/React.createElement("div", {
         style: {
           fontSize: '11px',
           color: oi === ans ? '#22c55e' : oi === userAns ? 'var(--rd)' : 'var(--tx3)',
           marginTop: '2px',
           lineHeight: '1.5'
         }
-      }, "\uD83C\uDDF0\uD83C\uDDF7 ", optKO)));
+      }, "\uD83C\uDDF0\uD83C\uDDF7 ", optKO.replace(/\s*\u2705\s*$/, '').trim())));
     })), isAnswered && /*#__PURE__*/React.createElement(React.Fragment, null, userAns !== ans && /*#__PURE__*/React.createElement("div", {
       className: "prac-result"
-    }, "\uC815\uB2F5: ", Array.isArray(opts[ans]) ? opts[ans][0] : opts[ans], " (", ans + 1, "\uBC88)"), meaning && /*#__PURE__*/React.createElement("div", {
+    }, "\uC815\uB2F5: ", Array.isArray(opts[ans]) ? opts[ans][0] : opts[ans], " (", ans + 1, "\uBC88)"), isSynQ && !isYoho && /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: 'var(--bg4)',
+        borderLeft: '3px solid var(--gn)',
+        borderRadius: '6px',
+        padding: '10px 12px',
+        marginTop: '8px',
+        fontSize: '13px',
+        lineHeight: '1.8'
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: '10px',
+        color: 'var(--gn)',
+        fontWeight: '700',
+        marginBottom: '5px'
+      }
+    }, "\u2705 \uC720\uC758 \uAD00\uACC4 \u2014 \uC65C \uAC19\uC740 \uB73B\uC77C\uAE4C?"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: 'var(--tx3)',
+        fontSize: '11px'
+      }
+    }, "\uC6D0\uBB38 "), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: 'var(--gd)',
+        fontWeight: '700'
+      }
+    }, "\u300C", sent, "\u300D")), /*#__PURE__*/React.createElement("div", {
+      style: {
+        textAlign: 'center',
+        color: 'var(--gn)',
+        fontSize: '12px',
+        margin: '1px 0'
+      }
+    }, "\u2252 \uBC14\uAFD4 \uB9D0\uD558\uBA74"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: 'var(--tx3)',
+        fontSize: '11px'
+      }
+    }, "\uC815\uB2F5 "), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: 'var(--gn)',
+        fontWeight: '700'
+      }
+    }, "\u300C", Array.isArray(opts[ans]) ? opts[ans][0] : opts[ans], "\u300D"))), meaning && /*#__PURE__*/React.createElement("div", {
       className: "prac-meaning"
     }, "\uD83D\uDCD6 ", meaning)));
   }), answered === total && /*#__PURE__*/React.createElement("div", {
@@ -2849,6 +2969,17 @@ function SynVocabScreen(_ref1) {
     mode = _useState42[0],
     setMode = _useState42[1]; // 'study' | 'quiz'
 
+  var _hintState = useState(0),
+    hintLv = _hintState[0],
+    setHintLv = _hintState[1]; // 0: 없음, 1: 첫글자, 2: 절반
+  var maskSyn = function maskSyn(s, lv) {
+    var chars = Array.from(String(s || ''));
+    var reveal = lv >= 2 ? Math.ceil(chars.length / 2) : 1;
+    return chars.map(function (c, i) {
+      if (c === ' ' || c === '　') return c;
+      return i < reveal ? c : '◯';
+    }).join('');
+  };
   var cur = vocab[order[idx]];
   var isWrong = wrongSet.has(order[idx]);
   var prev = function prev() {
@@ -2856,12 +2987,14 @@ function SynVocabScreen(_ref1) {
       return Math.max(0, i - 1);
     });
     setRevealed(false);
+    setHintLv(0);
   };
   var next = function next() {
     setIdx(function (i) {
       return Math.min(order.length - 1, i + 1);
     });
     setRevealed(false);
+    setHintLv(0);
   };
   var progressDots = order.map(function (_, i) {
     return /*#__PURE__*/React.createElement("div", {
@@ -2909,7 +3042,7 @@ function SynVocabScreen(_ref1) {
     className: "syn-arrow"
   }, "\u2252 \uAC19\uC740 \uC758\uBBF8"), /*#__PURE__*/React.createElement("div", {
     className: "syn-equiv"
-  }, "\u300C", cur[1], "\u300D")) : /*#__PURE__*/React.createElement("div", {
+  }, "\u300C", cur[1], "\u300D")) : hintLv === 0 ? /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: '12px',
       color: 'var(--tx3)',
@@ -2919,13 +3052,33 @@ function SynVocabScreen(_ref1) {
       borderRadius: '8px',
       textAlign: 'center'
     }
-  }, "\uD83D\uDC46 \uD0ED\uD558\uBA74 \uC720\uC758\uD45C\uD604\uC774 \uB098\uD0C0\uB0A9\uB2C8\uB2E4")), /*#__PURE__*/React.createElement("div", {
+  }, "\uD83D\uDC46 \uD0ED\uD558\uBA74 \uC815\uB2F5, \uB610\uB294 \uC544\uB798 \uD83D\uDCA1\uD78C\uD2B8\uB85C \uB5A0\uC62C\uB824 \uBCF4\uC138\uC694") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "syn-arrow"
+  }, "\uD83D\uDCA1 \uD78C\uD2B8 ", hintLv, "/2 \u00B7 ", hintLv === 1 ? '\uCCAB \uAE00\uC790' : '\uC808\uBC18 \uACF5\uAC1C'), /*#__PURE__*/React.createElement("div", {
+    className: "syn-equiv",
+    style: {
+      letterSpacing: '3px'
+    }
+  }, "\u300C", maskSyn(cur[1], hintLv), "\u300D"))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       gap: '8px',
       margin: '0 16px 12px'
     }
-  }, /*#__PURE__*/React.createElement("button", {
+  }, !revealed && hintLv < 2 && /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-ghost",
+    style: {
+      flex: 1,
+      padding: '10px',
+      borderColor: 'var(--gd)',
+      color: 'var(--gd)'
+    },
+    onClick: function onClick() {
+      return setHintLv(function (v) {
+        return Math.min(2, v + 1);
+      });
+    }
+  }, hintLv === 0 ? '\uD83D\uDCA1 \uD78C\uD2B8 \uBCF4\uAE30' : '\uD83D\uDCA1 \uD78C\uD2B8 \uB354\uBCF4\uAE30'), /*#__PURE__*/React.createElement("button", {
     className: "btn ".concat(isWrong ? 'btn-rd' : 'btn-ghost'),
     style: {
       flex: 1,
@@ -2969,11 +3122,15 @@ function SynQuizScreen(_ref10) {
   var vocab = _ref10.vocab,
     onAddWrong = _ref10.onAddWrong,
     onBack = _ref10.onBack;
+  var _synRetry = useState(null),
+    retryIdxs = _synRetry[0],
+    setRetryIdxs = _synRetry[1];
   var order = useMemo(function () {
+    if (retryIdxs && retryIdxs.length) return shuffle(retryIdxs.slice());
     return shuffle(vocab.map(function (_, i) {
       return i;
     }));
-  }, [vocab]);
+  }, [vocab, retryIdxs]);
   var _useState43 = useState(0),
     _useState44 = _slicedToArray(_useState43, 2),
     step = _useState44[0],
@@ -2993,6 +3150,9 @@ function SynQuizScreen(_ref10) {
   if (done || step >= order.length) {
     var correct = results.filter(Boolean).length;
     var pct = Math.round(correct / results.length * 100);
+    var wrongIdxs = order.filter(function (o, i) {
+      return results[i] === false;
+    });
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "nav"
     }, /*#__PURE__*/React.createElement("button", {
@@ -3025,12 +3185,26 @@ function SynQuizScreen(_ref10) {
     }, "\uC624\uB2F5"))), /*#__PURE__*/React.createElement("button", {
       className: "btn btn-or mt16",
       onClick: function onClick() {
+        setRetryIdxs(null);
         setStep(0);
         setSelected(null);
         setResults([]);
         setDone(false);
       }
-    }, "\uD83D\uDD04 \uB2E4\uC2DC \uD480\uAE30"), /*#__PURE__*/React.createElement("button", {
+    }, "\uD83D\uDD04 \uB2E4\uC2DC \uD480\uAE30"), wrongIdxs.length > 0 && /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-ghost mt8",
+      style: {
+        borderColor: 'var(--rd)',
+        color: 'var(--rd)'
+      },
+      onClick: function onClick() {
+        setRetryIdxs(wrongIdxs);
+        setStep(0);
+        setSelected(null);
+        setResults([]);
+        setDone(false);
+      }
+    }, "\u274C \uC624\uB2F5\uB9CC \uB2E4\uC2DC \uD480\uAE30 (", wrongIdxs.length, ")"), /*#__PURE__*/React.createElement("button", {
       className: "btn btn-ghost mt8",
       onClick: onBack
     }, "\uBA54\uB274\uB85C")));
@@ -3140,7 +3314,7 @@ function SynQuizScreen(_ref10) {
       color: 'var(--tx2)',
       lineHeight: '1.7'
     }
-  }, selected === correctOpt ? /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("div", null, selected === correctOpt ? /*#__PURE__*/React.createElement("span", {
     style: {
       color: 'var(--gn)',
       fontWeight: '700'
@@ -3150,7 +3324,27 @@ function SynQuizScreen(_ref10) {
       color: 'var(--rd)',
       fontWeight: '700'
     }
-  }, "\u274C \uC624\uB2F5 \u2014 \uC815\uB2F5: \u300C", cur[1], "\u300D")), selected !== null && /*#__PURE__*/React.createElement("div", {
+  }, "\u274C \uC624\uB2F5 \u2014 \uC815\uB2F5: \u300C", cur[1], "\u300D")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: '6px',
+      paddingTop: '6px',
+      borderTop: '1px solid var(--bg4)'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: 'var(--gd)',
+      fontWeight: '700'
+    }
+  }, "\u300C", cur[0], "\u300D"), " \u2252 ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: 'var(--gn)',
+      fontWeight: '700'
+    }
+  }, "\u300C", cur[1], "\u300D"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: 'var(--tx3)'
+    }
+  }, " \u2014 \uB458 \uB2E4 ", cur[2], " \uC758 \uB73B"))), selected !== null && /*#__PURE__*/React.createElement("div", {
     style: {
       margin: '0 16px 24px'
     }
@@ -3166,6 +3360,105 @@ function SynQuizScreen(_ref10) {
       });
     }
   }, step + 1 >= order.length ? '결과 보기 →' : '다음 문제 →')));
+}
+
+/* ─── 어휘 통합 검색 ───────────────────────────────────────────────── */
+function SearchScreen(_ref20) {
+  var index = _ref20.index,
+    onBack = _ref20.onBack;
+  var _ss = useState(''),
+    q = _ss[0],
+    setQ = _ss[1];
+  var query = q.trim().toLowerCase();
+  var results = useMemo(function () {
+    if (!query) return [];
+    return index.filter(function (e) {
+      return e.jp && e.jp.toLowerCase().indexOf(query) !== -1 || e.reading && e.reading.toLowerCase().indexOf(query) !== -1 || e.ko && e.ko.toLowerCase().indexOf(query) !== -1;
+    }).slice(0, 80);
+  }, [query, index]);
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "nav"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "nav-back",
+    onClick: onBack
+  }, "← 홈"), /*#__PURE__*/React.createElement("span", {
+    className: "nav-title"
+  }, "어휘 통합 검색"), /*#__PURE__*/React.createElement("span", {
+    className: "nav-sub"
+  }, index.length, "어")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '12px 16px'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    value: q,
+    autoFocus: true,
+    onChange: function onChange(e) {
+      setQ(e.target.value);
+    },
+    placeholder: "한자 · 히라가나 · 뜻으로 검색",
+    style: {
+      width: '100%',
+      padding: '13px 16px',
+      fontSize: '16px',
+      background: 'var(--bg2)',
+      border: '2px solid var(--bg3)',
+      borderRadius: '12px',
+      color: 'var(--tx)',
+      outline: 'none'
+    }
+  })), !query && /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "empty-icon"
+  }, "🔍"), /*#__PURE__*/React.createElement("div", {
+    className: "empty-text"
+  }, "검색어를 입력하세요"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: '12px',
+      color: 'var(--tx3)',
+      marginTop: '6px'
+    }
+  }, "예: たべる, 食, 먹다")), query && results.length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "empty-icon"
+  }, "😶"), /*#__PURE__*/React.createElement("div", {
+    className: "empty-text"
+  }, "「", q, "」 검색 결과가 없습니다")), query && results.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: '0 16px 24px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: '12px',
+      color: 'var(--tx2)',
+      margin: '4px 2px 10px'
+    }
+  }, results.length, "개 결과", results.length >= 80 ? ' (상위 80개)' : ''), results.map(function (e, i) {
+    return /*#__PURE__*/React.createElement("div", {
+      key: i,
+      className: "wr-item"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "wr-kanji"
+    }, e.jp), /*#__PURE__*/React.createElement("div", {
+      className: "wr-info"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "wr-hira"
+    }, e.lesson >= 10 && e.lesson <= 12 ? "≒ " + e.reading : e.reading), /*#__PURE__*/React.createElement("div", {
+      className: "wr-kr"
+    }, e.ko)), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: '10px',
+        fontWeight: '700',
+        color: 'var(--bl)',
+        background: 'var(--bg3)',
+        padding: '4px 8px',
+        borderRadius: '8px',
+        whiteSpace: 'nowrap',
+        textAlign: 'center'
+      }
+    }, e.lesson, "과", /*#__PURE__*/React.createElement("br", null), e.label));
+  })));
 }
 
 /* ─── KANJI SCREEN ───────────────────────────────────────────────── */
