@@ -3809,23 +3809,23 @@ function buildWarmupPool() {
   var hasKanji = function (s) {
     return typeof s === 'string' && /[一-龯㐀-䶿々]/.test(s);
   };
-  var add = function (q, a) {
+  var add = function (q, a, r) {
     if (!q || !a || !hasKanji(q)) return;
     var key = q + '|' + a;
     if (seen[key]) return;
     seen[key] = 1;
-    pool.push({ q: q, a: a });
+    pool.push({ q: q, a: a, r: r || '' });
   };
-  // 1~9과(한자읽기·표기·문맥규정): [표기, 읽기, 뜻, ...] → 표기 e[0], 뜻 e[2]
+  // 1~9과(한자읽기·표기·문맥규정): [표기, 읽기, 뜻, ...] → 표기 e[0], 히라가나 e[1], 뜻 e[2]
   [V1, V2, V3, V4, V5, V6, V7, V8, V9].forEach(function (V) {
-    V.forEach(function (e) { add(e[0], e[2]); });
+    V.forEach(function (e) { add(e[0], e[2], e[1]); });
   });
-  // 13~14과(용법): [히라가나, 한자, 뜻, ...] → 한자 e[1], 뜻 e[2]
+  // 13~14과(용법): [히라가나, 한자, 뜻, ...] → 한자 e[1], 히라가나 e[0], 뜻 e[2]
   [V13, V14].forEach(function (V) {
-    V.forEach(function (e) { add(e[1], e[2]); });
+    V.forEach(function (e) { add(e[1], e[2], e[0]); });
   });
-  // 15과(종합): [표기, 히라가나, 뜻, ...] → 표기 e[0], 뜻 e[2]
-  V15.forEach(function (e) { add(e[0], e[2]); });
+  // 15과(종합): [표기, 히라가나, 뜻, ...] → 표기 e[0], 히라가나 e[1], 뜻 e[2]
+  V15.forEach(function (e) { add(e[0], e[2], e[1]); });
   // 10~12과(유의표현)는 문장 단위라 한자→한국어 단어 퀴즈에서 제외
   return pool;
 }
@@ -3843,21 +3843,21 @@ function makeWarmupOpts(pool, idx) {
     if (!p.a || p.a === ans) continue;
     var pYong = /다$/.test(p.a);
     var shares = qChars.some(function (c) { return p.q.indexOf(c) >= 0; });
-    if (pYong === isYong && shares) shareK.push(p.a); // 같은 품사 + 한자 공유 → 가장 헷갈림
-    else if (pYong === isYong) samePos.push(p.a);      // 같은 품사
-    else rest.push(p.a);
+    if (pYong === isYong && shares) shareK.push(p); // 같은 품사 + 한자 공유 → 가장 헷갈림
+    else if (pYong === isYong) samePos.push(p);      // 같은 품사
+    else rest.push(p);
   }
   var cand = shuffle(shareK).concat(shuffle(samePos)).concat(shuffle(rest));
   var used = {};
   used[ans] = 1;
   var distract = [];
   for (var j = 0; j < cand.length && distract.length < 3; j++) {
-    if (used[cand[j]]) continue;
-    used[cand[j]] = 1;
+    if (used[cand[j].a]) continue;
+    used[cand[j].a] = 1;
     distract.push(cand[j]);
   }
-  var opts = shuffle([ans].concat(distract));
-  return { opts: opts, correctIdx: opts.indexOf(ans) };
+  var opts = shuffle([item].concat(distract));
+  return { opts: opts, correctIdx: opts.indexOf(item) };
 }
 function WarmupScreen(_refW) {
   var onBack = _refW.onBack;
@@ -3869,7 +3869,7 @@ function WarmupScreen(_refW) {
     var order = shuffle(pool.map(function (_, i) { return i; })).slice(0, 50);
     return order.map(function (idx) {
       var o = makeWarmupOpts(pool, idx);
-      return { q: pool[idx].q, a: pool[idx].a, opts: o.opts, correctIdx: o.correctIdx };
+      return { q: pool[idx].q, a: pool[idx].a, r: pool[idx].r, opts: o.opts, correctIdx: o.correctIdx };
     });
   }, [pool, runKey]);
   var _s = useState(0),
@@ -3932,14 +3932,23 @@ function WarmupScreen(_refW) {
         return /*#__PURE__*/React.createElement("div", {
           key: oi,
           className: cls,
+          style: { flexDirection: 'column', gap: '3px' },
           "data-disabled": selected !== null ? 'true' : undefined,
           onClick: function () { handleSelect(oi); }
-        }, opt);
+        }, /*#__PURE__*/React.createElement("div", null, opt.a),
+          selected !== null && opt.r && /*#__PURE__*/React.createElement("div", {
+            style: {
+              fontSize: '11px',
+              fontWeight: '500',
+              fontFamily: "'BIZ UDPMincho',serif",
+              color: oi === cur.correctIdx ? '#22c55e' : (oi === selected ? 'var(--rd)' : 'var(--tx3)')
+            }
+          }, opt.q + " · " + opt.r));
       })),
       selected !== null && /*#__PURE__*/React.createElement("div", { className: "qz-feedback" },
         selected === cur.correctIdx
-          ? ("✅ 정답!  " + cur.q + " = " + cur.a)
-          : ("❌ 오답 · 정답: " + cur.opts[cur.correctIdx] + "  (" + cur.q + ")")),
+          ? ("✅ 정답!  " + cur.q + " (" + cur.r + ") = " + cur.a)
+          : ("❌ 오답 · 정답: " + cur.a + " — " + cur.q + " (" + cur.r + ")")),
       selected !== null && /*#__PURE__*/React.createElement("button", { className: "btn btn-or mt16", onClick: function () {
         setSelected(null);
         if (step + 1 >= total) setDone(true); else setStep(step + 1);
