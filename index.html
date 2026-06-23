@@ -3829,6 +3829,19 @@ function buildWarmupPool() {
   // 10~12과(유의표현)는 문장 단위라 한자→한국어 단어 퀴즈에서 제외
   return pool;
 }
+// 뜻을 대안(슬래시·쉼표·가운뎃점) 단위로 정규화 → 의미 중복 판정용
+function meaningAlts(a) {
+  return String(a || '').split(/[\/,·;]+/).map(function (s) {
+    return s.replace(/\([^)]*\)/g, '').replace(/\s+/g, '').trim();
+  }).filter(Boolean);
+}
+function meaningOverlap(usedSet, a) {
+  var alts = meaningAlts(a);
+  for (var k = 0; k < alts.length; k++) {
+    if (usedSet[alts[k]]) return true;
+  }
+  return false;
+}
 function makeWarmupOpts(pool, idx) {
   var item = pool[idx];
   var ans = item.a;
@@ -3848,13 +3861,25 @@ function makeWarmupOpts(pool, idx) {
     else rest.push(p);
   }
   var cand = shuffle(shareK).concat(shuffle(samePos)).concat(shuffle(rest));
-  var used = {};
-  used[ans] = 1;
+  // 1차: 의미가 겹치지 않는 오답만 선택 (정답 뜻 및 이미 뽑은 오답 뜻과 대안 단위로 비교)
+  var usedAlts = {};
+  meaningAlts(ans).forEach(function (t) { usedAlts[t] = 1; });
   var distract = [];
   for (var j = 0; j < cand.length && distract.length < 3; j++) {
-    if (used[cand[j].a]) continue;
-    used[cand[j].a] = 1;
+    if (meaningOverlap(usedAlts, cand[j].a)) continue;
     distract.push(cand[j]);
+    meaningAlts(cand[j].a).forEach(function (t) { usedAlts[t] = 1; });
+  }
+  // 2차(예비): 그래도 3개 미만이면 서로 다른 문자열로 4보기 보장
+  if (distract.length < 3) {
+    var usedStr = {};
+    usedStr[ans] = 1;
+    distract.forEach(function (d) { usedStr[d.a] = 1; });
+    for (var k = 0; k < cand.length && distract.length < 3; k++) {
+      if (usedStr[cand[k].a]) continue;
+      usedStr[cand[k].a] = 1;
+      distract.push(cand[k]);
+    }
   }
   var opts = shuffle([item].concat(distract));
   return { opts: opts, correctIdx: opts.indexOf(item) };
@@ -3884,6 +3909,34 @@ function WarmupScreen(_refW) {
   var _dn = useState(false),
     done = _dn[0],
     setDone = _dn[1];
+  var _hint = useState(false),
+    showHint = _hint[0],
+    setShowHint = _hint[1];
+  var _tm = useState(20),
+    timer = _tm[0],
+    setTimer = _tm[1];
+  var kanjiMap = useMemo(function () {
+    var m = {};
+    (typeof KANJI_DB !== 'undefined' ? KANJI_DB : []).forEach(function (k) { m[k[0]] = k; });
+    return m;
+  }, []);
+  // 문항당 20초 카운트다운 (실제 시험 대비). 답하면 정지, 시간 초과 시 오답 처리
+  useEffect(function () {
+    if (done || selected !== null || !quiz[step]) return;
+    setTimer(20);
+    var id = setInterval(function () {
+      setTimer(function (t) {
+        if (t <= 1) {
+          clearInterval(id);
+          setSelected(-1);
+          setResults(function (r) { return r.concat([false]); });
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+    return function () { clearInterval(id); };
+  }, [step, done, selected, runKey]);
   var total = quiz.length;
   var nav = /*#__PURE__*/React.createElement("div", { className: "nav" },
     /*#__PURE__*/React.createElement("button", { className: "nav-back", onClick: onBack }, "← 홈"),
@@ -3899,6 +3952,7 @@ function WarmupScreen(_refW) {
         /*#__PURE__*/React.createElement("div", { className: "score-pct" }, correct + " / " + total + " 정답"),
         /*#__PURE__*/React.createElement("button", { className: "btn btn-or mt16", onClick: function () {
           setStep(0); setSelected(null); setResults([]); setDone(false);
+          setShowHint(false); setTimer(20);
           setRunKey(function (k) { return k + 1; });
         } }, "🔄 새 문제 50개"),
         /*#__PURE__*/React.createElement("button", { className: "btn btn-ghost mt8", onClick: onBack }, "홈으로")));
@@ -3914,15 +3968,33 @@ function WarmupScreen(_refW) {
     setResults(function (r) { return r.concat([oi === cur.correctIdx]); });
   };
   var correctSoFar = results.filter(Boolean).length;
+  var hintKanji = cur.q.split('').filter(function (c) { return /[一-龯々]/.test(c) && kanjiMap[c]; });
   return /*#__PURE__*/React.createElement("div", null, nav,
     /*#__PURE__*/React.createElement("div", { className: "qz-wrap" },
       /*#__PURE__*/React.createElement("div", { style: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' } },
         /*#__PURE__*/React.createElement("div", { style: { flex: 1, height: '6px', background: 'var(--bg3)', borderRadius: '3px', overflow: 'hidden' } },
           /*#__PURE__*/React.createElement("div", { style: { height: '100%', borderRadius: '3px', background: 'linear-gradient(90deg,#0ea5e9,#f97316)', width: Math.round(step / total * 100) + '%', transition: 'width .3s' } })),
         /*#__PURE__*/React.createElement("span", { style: { fontSize: '12px', color: 'var(--tx2)', whiteSpace: 'nowrap' } }, "🟢 " + correctSoFar)),
+      /*#__PURE__*/React.createElement("div", { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' } },
+        /*#__PURE__*/React.createElement("span", { style: { fontSize: '14px' } }, "⏱️"),
+        /*#__PURE__*/React.createElement("div", { style: { flex: 1, height: '6px', background: 'var(--bg3)', borderRadius: '3px', overflow: 'hidden' } },
+          /*#__PURE__*/React.createElement("div", { style: { height: '100%', borderRadius: '3px', width: (Math.max(0, timer) / 20 * 100) + '%', background: timer > 10 ? 'var(--gn)' : timer > 5 ? 'var(--gd)' : 'var(--rd)', transition: 'width 1s linear' } })),
+        /*#__PURE__*/React.createElement("span", { style: { fontSize: '13px', fontWeight: '700', minWidth: '34px', textAlign: 'right', color: timer > 10 ? 'var(--gn)' : timer > 5 ? 'var(--gd)' : 'var(--rd)' } }, selected === null ? timer + "초" : "")),
       /*#__PURE__*/React.createElement("div", { className: "qz-card" },
         /*#__PURE__*/React.createElement("div", { className: "qz-type" }, "한자 → 한국어 뜻"),
         /*#__PURE__*/React.createElement("div", { className: "qz-word" }, cur.q)),
+      selected === null && !showHint && /*#__PURE__*/React.createElement("button", { className: "btn btn-ghost", style: { borderColor: 'var(--gd)', color: 'var(--gd)', marginBottom: '10px' }, onClick: function () { setShowHint(true); } }, "💡 한자 힌트 보기"),
+      showHint && /*#__PURE__*/React.createElement("div", { style: { background: 'var(--bg2)', border: '1px solid var(--gd)', borderRadius: '12px', padding: '12px 14px', marginBottom: '12px' } },
+        /*#__PURE__*/React.createElement("div", { style: { fontSize: '11px', color: 'var(--gd)', fontWeight: '700', marginBottom: '8px' } }, "💡 한자 힌트 · 뜻은 비공개"),
+        /*#__PURE__*/React.createElement("div", { style: { fontSize: '15px' } }, "🔉 읽기  ", /*#__PURE__*/React.createElement("span", { style: { color: 'var(--or)', fontWeight: '700', fontFamily: "'BIZ UDPMincho',serif" } }, cur.r || '—')),
+        hintKanji.map(function (c, ci) {
+          var k = kanjiMap[c];
+          return /*#__PURE__*/React.createElement("div", { key: ci, style: { fontSize: '12px', color: 'var(--tx2)', lineHeight: '1.7', borderTop: '1px solid var(--bg3)', paddingTop: '6px', marginTop: '6px' } },
+            /*#__PURE__*/React.createElement("span", { style: { fontFamily: "'BIZ UDPMincho',serif", fontSize: '18px', fontWeight: '700', color: 'var(--tx)', marginRight: '8px' } }, c),
+            "음 ", /*#__PURE__*/React.createElement("b", { style: { color: 'var(--bl)' } }, k[1] || '-'), " · 훈 ", /*#__PURE__*/React.createElement("b", { style: { color: 'var(--bl)' } }, k[2] || '-'),
+            k[4] ? /*#__PURE__*/React.createElement("div", { style: { marginTop: '2px', color: 'var(--tx3)' } }, "🧩 " + k[4]) : null);
+        }),
+        hintKanji.length === 0 && /*#__PURE__*/React.createElement("div", { style: { fontSize: '11px', color: 'var(--tx3)', marginTop: '6px' } }, "이 한자의 모양 힌트는 준비되어 있지 않아요. 읽기로 떠올려 보세요.")),
       /*#__PURE__*/React.createElement("div", { className: "qz-opts" }, cur.opts.map(function (opt, oi) {
         var cls = 'qz-opt';
         if (selected !== null) {
@@ -3948,9 +4020,12 @@ function WarmupScreen(_refW) {
       selected !== null && /*#__PURE__*/React.createElement("div", { className: "qz-feedback" },
         selected === cur.correctIdx
           ? ("✅ 정답!  " + cur.q + " (" + cur.r + ") = " + cur.a)
-          : ("❌ 오답 · 정답: " + cur.a + " — " + cur.q + " (" + cur.r + ")")),
+          : (selected === -1
+            ? ("⏰ 시간 초과 · 정답: " + cur.a + " — " + cur.q + " (" + cur.r + ")")
+            : ("❌ 오답 · 정답: " + cur.a + " — " + cur.q + " (" + cur.r + ")"))),
       selected !== null && /*#__PURE__*/React.createElement("button", { className: "btn btn-or mt16", onClick: function () {
         setSelected(null);
+        setShowHint(false);
         if (step + 1 >= total) setDone(true); else setStep(step + 1);
       } }, step + 1 >= total ? "🏁 결과 보기" : "다음 →")));
 }
