@@ -1,0 +1,7 @@
+{
+  "name": "jlpt-n4-data-tools",
+  "private": true,
+  "description": "data.js 재생성 도구",
+  "scripts": { "build": "node build_data.js" },
+  "dependencies": { "kuromoji": "0.1.2" }
+}
