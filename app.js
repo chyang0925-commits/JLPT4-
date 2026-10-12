@@ -223,7 +223,7 @@
   VIEWS.home = () => {
     const q = todayQueue(); const dd = ddays();
     const kc = kanjiStats(N.KANJI);
-    const lv = ['N5', 'N4', '기출'].map(l => { const list = N.KANJI.filter(k => k.lv === l); return { l, list, c: kanjiStats(list) }; });
+    const lv = ['N5', 'N4', '기출', '교재'].map(l => { const list = N.KANJI.filter(k => k.lv === l); return { l, list, c: kanjiStats(list) }; });
     const total = q.dueK.length + q.dueV.length + q.newK.length;
     return top('JLPT N4 한자 암기장', '', false, `${dd >= 0 ? `<span class="chip-dday">D-${dd}</span>` : ''}<button class="icon-btn" data-act="settings" aria-label="설정">⚙</button>`) + `
     <div class="sec"><div class="today">
@@ -236,7 +236,7 @@
       <button class="btn block" data-act="today" ${total ? '' : 'disabled'}>${total ? `학습 시작 · ${Math.min(total, 40)}장` : '오늘 분량을 모두 마쳤습니다'}</button>
     </div></div>
     <div class="sec"><div class="sec-h"><h2>한자 암기 현황</h2><span class="more">${kc[3]} / ${N.KANJI.length}자 암기</span></div>
-      <div class="panel">${lv.map(x => `<div class="prog-row"><b>${x.l}</b>${statBar(x.c, x.list.length)}<span class="n">${x.c[3]}/${x.list.length}</span></div>`).join('')}
+      <div class="panel">${lv.map(x => `<div class="prog-row"><b>${x.l === '교재' ? '교재' : x.l}</b>${statBar(x.c, x.list.length)}<span class="n">${x.c[3]}/${x.list.length}</span></div>`).join('')}
       <div class="legend"><span><i class="bg-st3"></i>암기 완료</span><span><i class="bg-st2"></i>학습 중</span><span><i class="bg-st1"></i>다시 볼 것</span><span><i class="bg-st0"></i>아직 안 봄</span></div></div>
     </div>
     <div class="sec"><div class="sec-h"><h2>빠른 연습</h2></div>
@@ -262,7 +262,7 @@
   }
   VIEWS.kanji = () => {
     const pool = kanjiPool();
-    const lvs = [['all', '전체'], ['N5', 'N5'], ['N4', 'N4'], ['기출', '기출 N3']];
+    const lvs = [['all', '전체'], ['N5', 'N5'], ['N4', 'N4'], ['기출', '기출 N3'], ['교재', '교재 등장']];
     const sts = [['all', '모두'], ['0', '안 본 것'], ['1', '다시 볼 것'], ['2', '학습 중'], ['3', '암기 완료']];
     return top('한자', `${pool.length}자`, false) + `
     <div class="sec"><div class="chips">${lvs.map(([k, n]) => `<button class="chip ${kFilter.lv === k ? 'on' : ''}" data-kf="lv" data-val="${k}">${n}</button>`).join('')}</div>
@@ -438,7 +438,7 @@
     return { ins: '훈음과 읽기에 맞는 한자를 고르세요.', prompt: `<div class="hun" style="font-size:30px">${esc(k.hun)}</div><div class="q-sub jp">${esc(rd)}</div>`, opts, ans: opts.findIndex(o => o.t === k.k), optClass: 'kj', two: true, wid: kid(k.k), srsId: kid(k.k), sayBefore: k.kun[0] ? k.kun[0].replace('.', '') : k.on[0], review: esc(k.hun), time: 12 };
   }
   function kanjiQuiz(mode, usePool) {
-    const pool = usePool ? kanjiPool() : N.KANJI;
+    const pool = usePool ? kanjiPool() : N.KANJI.filter(k => k.lv !== '교재'); // 홈 빠른 연습은 시험 범위(N5·N4·기출) 우선
     let qs = [], title = '';
     if (mode === 'hun') { title = '훈음 맞히기'; qs = pick(pool, 30).map(k => qKanjiHun(k, pool)); }
     else if (mode === 'pick') { title = '한자 고르기'; qs = pick(pool, 20).map(k => qKanjiPick(k, pool)); }
