@@ -245,7 +245,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .homo { display: grid; gap: 8px; }
 .homo .panel { padding: 12px 14px; }
 .homo .rd2 { font-family: var(--f-jp); font-weight: 700; font-size: 18px; color: var(--ai); }
-.homo .it { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.homo .it { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .homo .it b { font-family: var(--f-jp); font-size: 20px; }
 
 .set-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
@@ -296,3 +296,7 @@ textarea { width: 100%; min-height: 120px; font-size: 12px; font-family: ui-mono
 .step.done .chk { background: var(--ok); border-color: var(--ok); color: var(--surface); }
 .step.done b { color: var(--ink-3); text-decoration: line-through; }
 .step .btn { padding: 8px 14px; }
+.opt.has-spk { grid-template-columns: 24px minmax(0, 1fr) auto; }
+.opt.has-spk .note { grid-column: 2 / 4; }
+.spk.sm { width: 32px; height: 32px; }
+.spk.sm svg { width: 15px; height: 15px; }

@@ -66,10 +66,23 @@ module.exports = function addSpeech(out, done) {
       const tag = `${p.title} ${qi + 1}번`;
       const ans = q.o[q.a][0];
       if (p.type === 'syn') { q.sb = spSent(q.s, tag); q.sa = ans; }
-      else if (p.type === 'use') { q.sa = ans; }
+      else if (p.type === 'use') { q.sb = [...q.s].some(isK) ? null : q.s; if (!q.sb) delete q.sb; q.sa = spSent(ans, tag); }
       else if (p.type === 'read') { q.sa = spSent(replaceTarget(q.s, q.u, '{' + plainOf(q.u) + '|' + ans + '}'), tag); }
       else if (p.type === 'write') { q.sb = spSent(q.s, tag); q.sa = q.sb; }
-      else if (p.type === 'ctx') { q.sa = spSent(q.s.replace(BLANK, ans), tag); }
+      else if (p.type === 'ctx') { q.sb = spSent(q.s.replace(BLANK, '、'), tag); q.sa = spSent(q.s.replace(BLANK, ans), tag); }
+      // 보기별 음성 (채점 후 보기 옆 🔊). 표기 문제는 틀린 한자 조합이라 읽을 수 없으므로 제외
+      if (p.type !== 'write') {
+        const os = q.o.map(o => {
+          const t = o[0];
+          if (p.type === 'syn' || p.type === 'use') return spSent(t, tag + ' 보기');
+          if (![...t].some(isK)) return t;
+          const v = out.VOCAB.find(x => x.w === t);
+          return v ? spWord(v.w, v.r) : null;
+        });
+        if (os.some(Boolean)) q.os = os;
+      }
+      // 보기 순서를 섞어 내므로 번호를 가리키는 해설은 지운다
+      q.o.forEach(o => { if (o[1]) o[1] = o[1].replace(/\s*△?\s*\(정답은 [①②③④1-4]번?\)/g, '').trim(); });
     }));
     function plainOf(u) { return String(u).replace(FURI, '$1'); }
     done(report);

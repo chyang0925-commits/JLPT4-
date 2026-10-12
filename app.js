@@ -6,6 +6,8 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const pick = (a, n) => shuffle(a).slice(0, n);
+  // 보기 순서를 매번 새로 섞는다 (정답 번호를 다시 계산)
+  const shuffleOpts = q => { const order = shuffle(q.opts.map((_, i) => i)); return Object.assign({}, q, { opts: order.map(i => q.opts[i]), ans: order.indexOf(q.ans) }); };
   const isK = c => /[一-鿿]/.test(c);
   const hasK = s => /[一-鿿]/.test(s || '');
   const DAY = 864e5;
@@ -35,7 +37,7 @@
   /* ───────── 저장소 ───────── */
   const KEY = 'jlpt_n4_v4';
   const DEF = {
-    srs: {}, wrong: {}, best: {}, log: {},
+    srs: {}, wrong: {}, best: {}, log: {}, seen: {},
     set: { rate: 0.85, voice: '', auto: true, furi: true, timer: false, theme: 'system', daily: 10, exam: '2026-12-06', mode: 'course' },
     plan: { days: [0, 1, 3, 5], steps: {}, fin: {}, focus: null },
     migrated: false,
@@ -384,7 +386,7 @@
       planDone(ses);
       return top(ses.title, '결과', true) + `<div class="result">${pct >= 80 ? '<div class="stamp">合格</div>' : ''}<div class="pct">${pct}%</div><p class="muted">${ses.qs.length}문제 중 ${ses.score}문제 정답</p></div>
       <div class="list"><button class="btn pri block" data-act="requiz">같은 문제 다시 풀기</button>${ses.wrongIdx.length ? `<button class="btn ng block" data-act="rewrong">틀린 ${ses.wrongIdx.length}문제만 다시</button>` : ''}<button class="btn block" data-act="back">${ses.plan ? '챕터로 돌아가기' : '목록으로'}</button></div>
-      ${ses.wrongIdx.length ? `<div class="sec"><div class="sec-h"><h2>틀린 문제 다시 보기</h2></div><div class="list">${ses.wrongIdx.map(i => { const q = ses.qs[i]; return `<div class="panel small"><div class="jp" style="font-size:16px">${q.review || q.prompt}</div><div style="color:var(--ok);margin-top:4px">정답: ${esc(q.opts[q.ans].t)}</div></div>`; }).join('')}</div></div>` : ''}`;
+      ${ses.wrongIdx.length ? `<div class="sec"><div class="sec-h"><h2>틀린 문제 다시 보기</h2></div><div class="list">${ses.wrongIdx.map(i => { const q = ses.qs[i]; return `<div class="panel small"><div class="row" style="align-items:flex-start"><div class="jp grow" style="font-size:16px">${q.review || q.prompt}</div>${q.sayAfter ? spkBtn(q.sayAfter) : ''}</div><div style="color:var(--ok);margin-top:4px">정답: ${esc(q.opts[q.ans].t)}</div></div>`; }).join('')}</div></div>` : ''}`;
     }
     const q = ses.qs[ses.i]; const answered = ses.picked != null;
     const okPick = answered && ses.picked === q.ans;
@@ -398,7 +400,8 @@
       ${S.set.timer && !answered ? '<div class="timer"><i style="width:100%"></i></div>' : ''}
       <div class="opts ${q.two ? 'two' : ''}">${q.opts.map((o, i) => {
       let cls = ''; if (answered) { if (i === q.ans) cls = 'ok'; else if (i === ses.picked) cls = 'ng'; }
-      return `<button class="opt ${cls}" data-pick="${i}" ${answered ? 'disabled' : ''}><span class="n">${i + 1}</span><span class="t ${optCls}">${esc(o.t)}</span>${answered && o.note ? `<span class="note">${esc(o.note)}</span>` : ''}</button>`;
+      if (!answered) return `<button class="opt" data-pick="${i}"><span class="n">${i + 1}</span><span class="t ${optCls}">${esc(o.t)}</span></button>`;
+      return `<div class="opt ${cls} ${o.say ? 'has-spk' : ''}"><span class="n">${i + 1}</span><span class="t ${optCls}">${esc(o.t)}</span>${o.say ? spkBtn(o.say, 'sm') : ''}${o.note ? `<span class="note">${esc(o.note)}</span>` : ''}</div>`;
     }).join('')}</div>
       ${answered ? `<div class="fb flash-ok"><div class="res ${okPick ? 'ok' : 'ng'}">${okPick ? '정답입니다' : ses.picked === -1 ? '시간이 지났습니다' : '오답입니다'} — 정답 ${q.ans + 1}번 「${esc(q.opts[q.ans].t)}」</div>${q.explain || ''}${q.sayAfter ? `<div class="row"><span class="grow small muted">정답을 넣은 문장 듣기</span>${spkBtn(q.sayAfter)}</div>` : ''}</div>
       <div class="sticky-next"><button class="btn pri block" data-act="next">${ses.i + 1 >= ses.qs.length ? '결과 보기' : '다음 문제 →'} <small>(Enter)</small></button></div>` : '<p class="kbd">키보드: 1~4 선택 · Enter 다음</p>'}`;
@@ -409,6 +412,7 @@
     const q = ses.qs[ses.i]; ses.picked = i;
     const ok = i === q.ans;
     if (ok) { ses.score++; q.wid && markRight(q.wid); } else { ses.wrongIdx.push(ses.i); q.wid && markWrong(q.wid); }
+    if (q.wid && q.wid.startsWith('p:')) S.seen[q.wid] = Date.now();
     if (q.pset != null) { ses.ps = ses.ps || {}; const x = ses.ps[q.pset] = ses.ps[q.pset] || [0, 0]; x[0]++; if (ok) x[1]++; }
     if (q.srsId) { const s = srs(q.srsId); if (!s && ok) S.srs[q.srsId] = { b: 2, due: Date.now() + DAY, n: 1 }; }
     logToday(); save(); render();
@@ -419,14 +423,14 @@
   function qWordRead(v) { // 단어 → 읽기 (함정: 탁음·장음·촉음·요음)
     const others = N.VOCAB.filter(x => x.r.length === v.r.length && x.r !== v.r).map(x => x.r);
     const ds = fill(v.r, readingTraps(v.r), others);
-    const opts = shuffle([{ t: v.r, note: v.m }, ...ds.map(t => { const real = N.VOCAB.find(x => x.r === t && hasK(x.w)); return { t, note: real ? `${real.w} : ${real.m}` : '★ 발음 함정' }; })]);
+    const opts = shuffle([{ t: v.r, note: v.m, say: v.r }, ...ds.map(t => { const real = N.VOCAB.find(x => x.r === t && hasK(x.w)); return { t, say: t, note: real ? `${real.w} : ${real.m}` : '★ 발음 함정' }; })]);
     return { ins: '단어의 읽는 법으로 알맞은 것을 고르세요.', prompt: `<div class="q-big jp">${esc(v.w)}</div><div class="q-sub">${esc(v.m)}</div>`, opts, ans: opts.findIndex(o => o.t === v.r), wid: v.id, srsId: v.id, sayAfter: sv(v), explain: `<div class="kparts">${kparts(v.w)}</div>`, review: `${esc(v.w)} — ${esc(v.m)}` };
   }
   function qWordWrite(v) { // 읽기 → 표기 (함정: 닮은 한자 · 같은 읽기)
     const homo = N.VOCAB.filter(x => x.r === v.r && x.w !== v.w && hasK(x.w)).map(x => x.w);
     const share = N.VOCAB.filter(x => x.w !== v.w && hasK(x.w) && x.w.length === v.w.length && [...x.w].some(c => isK(c) && v.w.includes(c))).map(x => x.w);
     const ds = fill(v.w, writeTraps(v.w).concat(homo), share.concat(N.VOCAB.filter(x => hasK(x.w) && x.w.length === v.w.length).map(x => x.w)));
-    const opts = shuffle([{ t: v.w, note: v.m }, ...ds.map(t => { const real = N.VOCAB.find(x => x.w === t); return { t, note: real ? `${real.r} : ${real.m}` : '★ 틀린 표기 (닮은 한자)' }; })]);
+    const opts = shuffle([{ t: v.w, note: v.m, say: sv(v) }, ...ds.map(t => { const real = N.VOCAB.find(x => x.w === t); return { t, say: real ? sv(real) : null, note: real ? `${real.r} : ${real.m}` : '★ 틀린 표기 (닮은 한자)' }; })]);
     return { ins: '히라가나를 한자로 쓰면?', prompt: `<div class="q-big jp">${esc(v.r)}</div><div class="q-sub">${esc(v.m)}</div>`, sayBefore: sv(v), opts, ans: opts.findIndex(o => o.t === v.w), optClass: 'kj', two: true, wid: v.id, srsId: v.id, explain: `<div class="kparts">${kparts(v.w)}</div>`, review: `${esc(v.r)} — ${esc(v.m)}` };
   }
   function qKanjiHun(k, pool) {
@@ -476,11 +480,15 @@
       two = type !== 'ctx' || ansText.length <= 8;
       if (type === 'write') optClass = 'kj';
     }
-    const opts = q.o.map(o => ({ t: o[0], note: o[1] }));
-    return { ins: TYPE_INS[type], prompt, opts, ans: q.a, two: two && opts.every(o => o.t.length <= 7), optClass, sayBefore, sayAfter, wid: 'p:' + p.id + '-' + qi, pset: p.id, explain: q.t ? `<div class="tr">${esc(q.t)}</div>` : '', review: type === 'use' ? esc(q.s) : ruby(q.s, type === 'ctx' ? null : q.u) };
+    const opts = q.o.map((o, i) => ({ t: o[0], note: o[1], say: q.os ? q.os[i] : null }));
+    return shuffleOpts({ ins: TYPE_INS[type], prompt, opts, ans: q.a, two: two && opts.every(o => o.t.length <= 7), optClass, sayBefore, sayAfter, wid: 'p:' + p.id + '-' + qi, pset: p.id, explain: q.t ? `<div class="tr">${esc(q.t)}</div>` : '', review: type === 'use' ? esc(q.s) : ruby(q.s, type === 'ctx' ? null : q.u) });
   }
-  function startSet(p) { startQuiz(p.title, p.qs.map((_, i) => probQ(p, i)), { setId: p.id }); }
+  function startSet(p) { startQuiz(p.title, shuffle(p.qs.map((_, i) => probQ(p, i))), { setId: p.id }); }
 
+  function pickFresh(qs, n) {
+    const seen = q => S.seen[q.wid] || 0;
+    return shuffle(shuffle(qs).sort((a, b) => seen(a) - seen(b)).slice(0, n));
+  }
   /* ───────── 어휘 탭 ───────── */
   let vSearch = '';
   VIEWS.vocab = () => {
@@ -526,7 +534,7 @@
     if (mode === 'syn') {
       qs = pick(items, 20).map(s => {
         const ds = fill(s.b, items.filter(x => x !== s).map(x => x.b), N.SYN.map(x => x.b));
-        const opts = shuffle([{ t: s.b, note: s.m }, ...ds.map(t => ({ t, note: (N.SYN.find(x => x.b === t) || {}).m || '' }))]);
+        const opts = shuffle([{ t: s.b, note: s.m, say: s.b }, ...ds.map(t => ({ t, say: t, note: (N.SYN.find(x => x.b === t) || {}).m || '' }))]);
         return { ins: '같은 의미의 문장을 고르세요.', prompt: `<div class="q-sent"><span class="ul">${esc(s.a)}</span></div><div class="q-sub">${esc(s.m)}</div>`, sayBefore: s.a, opts, ans: opts.findIndex(o => o.t === s.b), sayAfter: s.b, wid: s.id };
       });
     } else if (mode === 'mean') {
@@ -559,8 +567,8 @@
   function mockQuiz() {
     const byType = t => N.PROBS.filter(p => p.type === t).flatMap(p => p.qs.map((_, i) => [p, i]));
     const qs = [];
-    ['read', 'write', 'ctx', 'syn', 'use'].forEach(t => pick(byType(t), 5).forEach(([p, i]) => qs.push(probQ(p, i))));
-    startQuiz('실전 모의', qs);
+    ['read', 'write', 'ctx', 'syn', 'use'].forEach(t => pickFresh(byType(t).map(([p, i]) => probQ(p, i)), 5).forEach(q => qs.push(q)));
+    startQuiz('실전 모의', shuffle(qs));
   }
 
   /* ───────── 오답노트 ───────── */
@@ -580,7 +588,7 @@
     ${ks.length ? `<div class="sec"><div class="sec-h"><h2>한자 ${ks.length}</h2></div><div class="kgrid">${ks.map(k => `<button class="ktile" data-kanji="${k.k}"><span class="dot st1"></span><span class="c">${k.k}</span><span class="h">${esc(k.hun)}</span></button>`).join('')}</div></div>` : ''}
     ${vs.length ? `<div class="sec"><div class="sec-h"><h2>어휘 ${vs.length}</h2></div><div class="wlist">${vs.map(v => wordItem(v)).join('')}</div></div>` : ''}
     ${ss.length ? `<div class="sec"><div class="sec-h"><h2>유의표현 ${ss.length}</h2></div><div class="wlist">${ss.map(s => `<div class="witem"><div class="grow"><div class="jp" style="font-weight:700">${esc(s.a)}</div><div class="r">≒ ${esc(s.b)}</div></div>${spkBtn(s.a)}</div>`).join('')}</div></div>` : ''}
-    ${ps.length ? `<div class="sec"><div class="sec-h"><h2>기출 문제 ${ps.length}</h2></div><div class="list">${ps.slice(0, 40).map(({ p, qi }) => { const q = p.qs[qi]; return `<div class="panel"><div class="small muted"><span class="tag ${p.type}">${TYPE_NAME[p.type]}</span> ${esc(p.title)} · ${qi + 1}번</div><div class="q-sent" style="font-size:16px;line-height:2">${p.type === 'use' ? esc(q.s) : ruby(q.s, p.type === 'ctx' ? null : q.u)}</div><div style="color:var(--ok);font-weight:700">정답: ${esc(q.o[q.a][0])}</div></div>`; }).join('')}</div></div>` : ''}
+    ${ps.length ? `<div class="sec"><div class="sec-h"><h2>기출 문제 ${ps.length}</h2></div><div class="list">${ps.slice(0, 40).map(({ p, qi }) => { const q = p.qs[qi]; return `<div class="panel"><div class="small muted"><span class="tag ${p.type}">${TYPE_NAME[p.type]}</span> ${esc(p.title)} · ${qi + 1}번</div><div class="q-sent" style="font-size:16px;line-height:2">${p.type === 'use' ? esc(q.s) : ruby(q.s, p.type === 'ctx' ? null : q.u)}</div><div class="row"><span class="grow" style="color:var(--ok);font-weight:700">정답: ${esc(q.o[q.a][0])}</span>${q.sa ? spkBtn(q.sa) : ''}</div></div>`; }).join('')}</div></div>` : ''}
     <div class="sec"><button class="btn block" data-act="clearwrong">오답노트 비우기</button></div>`;
   };
   function wrongProbQuiz() {
@@ -593,7 +601,7 @@
     <div class="sec"><button class="btn pri block" data-act="cquiz">닮은 한자 구별 퀴즈 20</button></div>
     <div class="list">${N.CONFUSE.map(g => `<div class="panel"><div class="cmp">${g.map(c => `<button data-kanji="${c}" ${KMAP[c] ? '' : 'disabled'}><b>${c}</b><small>${KMAP[c] ? esc(KMAP[c].hun) : '범위 외'}</small></button>`).join('')}</div></div>`).join('')}</div>`;
   VIEWS.homo = () => top('같은 읽기 다른 한자', '', true) + `<p class="small muted" style="margin-top:14px">읽기가 같아서 표기 문제에 함정으로 자주 나오는 말들입니다.</p>
-    <div class="homo sec">${N.HOMO.map(h => `<div class="panel"><div class="row"><span class="rd2 grow">${esc(h.r)}</span>${spkBtn(h.r)}</div>${h.items.map(i => `<div class="it"><b>${esc(i.w)}</b><span class="muted">${esc(i.m)}</span></div>`).join('')}</div>`).join('')}</div>`;
+    <div class="homo sec">${N.HOMO.map(h => `<div class="panel"><div class="row"><span class="rd2 grow">${esc(h.r)}</span>${spkBtn(h.r)}</div>${h.items.map(i => `<div class="it"><b>${esc(i.w)}</b><span class="muted grow">${esc(i.m)}</span>${(() => { const v = N.VOCAB.find(x => x.w === i.w && x.r === h.r) || N.VOCAB.find(x => x.w === i.w); return v ? spkBtn(sv(v), 'sm') : ''; })()}</div>`).join('')}</div>`).join('')}</div>`;
   function confuseQuiz() {
     const ks = N.KANJI.filter(k => (CONF[k.k] || []).some(c => KMAP[c]));
     startQuiz('닮은 한자 구별', pick(ks, 20).map(k => qKanjiPick(k, ks)));
@@ -647,8 +655,12 @@
   })();
   const fmtD = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   const mdLabel = s => { const d = new Date(s + 'T00:00:00'); return `${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})`; };
-  function reviewIds() { const now = Date.now(); return shuffle(Object.keys(S.srs).filter(id => S.srs[id].due <= now && (id.startsWith('k:') ? KMAP[id.slice(2)] : (VMAP[id] || SMAP[id])))).slice(0, 40); }
-  const stepMin = st => st.k === 'rev' ? Math.max(3, Math.min(10, Math.round(reviewIds().length * 0.25))) : st.min;
+  const validId = id => id.startsWith('k:') ? !!KMAP[id.slice(2)] : !!(VMAP[id] || SMAP[id]);
+  function reviewIds() { const now = Date.now(); return shuffle(Object.keys(S.srs).filter(id => S.srs[id].due <= now && validId(id))).slice(0, 40); }
+  // 복습 차례가 아직 안 된 경우: 오답 우선, 그다음 복습일이 가까운 카드 20장
+  function previewIds() { const ids = Object.keys(S.srs).filter(validId); const w = id => (S.wrong[id] ? 0 : 1); return shuffle(ids.sort((a, b) => w(a) - w(b) || S.srs[a].due - S.srs[b].due).slice(0, 20)); }
+  function revDesc() { const d = reviewIds().length; if (d) return `지금 복습 차례인 한자·어휘 ${d}장`; const p = previewIds().length; return p ? `복습 차례인 카드는 없어서, 오답·최근 카드 ${p}장을 미리 복습` : '아직 학습한 카드가 없어 이번에는 건너뜁니다 (첫 회차)'; }
+  const stepMin = st => st.k === 'rev' ? Math.max(3, Math.min(10, Math.round((reviewIds().length || previewIds().length) * 0.25))) : st.min;
   const stepDone = (n, si) => !!S.plan.steps[n + '-' + si];
   const nextChapter = () => { for (let n = 1; n <= PLAN_N; n++) if (!S.plan.fin[n]) return n; return 0; };
   // 완료한 회차는 완료일, 남은 회차는 오늘(오늘 이미 끝냈으면 내일)부터 공부 요일에 차례로 배치
@@ -671,18 +683,18 @@
   }
   function finishChapter(n) { S.plan.fin[n] = todayStr(); if (S.plan.focus && S.plan.focus.n === n) S.plan.focus = null; save(); toast(n === PLAN_N ? '30회 코스를 모두 마쳤습니다. 시험 잘 보세요!' : `${n}회차 완료! 수고했습니다`); }
   function planDone(ses) { if (ses.plan && !ses.planMarked) { ses.planMarked = 1; markStep(ses.plan.n, ses.plan.si, false); } }
-  function ptypeQuiz(type) { const all = N.PROBS.filter(p => (type === 'mix' ? p.L === 15 : p.type === type)).flatMap(p => p.qs.map((_, i) => probQ(p, i))); return startQuiz(TYPE_NAME[type] + ' 랜덤', pick(all, 20)); }
+  function ptypeQuiz(type) { const all = N.PROBS.filter(p => (type === 'mix' ? p.L === 15 : p.type === type)).flatMap(p => p.qs.map((_, i) => probQ(p, i))); return startQuiz(TYPE_NAME[type] + ' 랜덤', pickFresh(all, 20)); }
   function wrongCards() { return startCards(shuffle(Object.keys(S.wrong).filter(k => (k.startsWith('k:') && KMAP[k.slice(2)]) || VMAP[k] || SMAP[k])), '오답 카드'); }
   function runStep(n, si) {
     const st = PLAN.sessions[n - 1].steps[si];
     pendingPlan = { n, si };
     if (!S.plan.focus) { S.plan.focus = { n, t0: Date.now() }; save(); }
     switch (st.k) {
-      case 'rev': { const ids = reviewIds(); if (!ids.length) { pendingPlan = null; toast('지금 복습할 항목이 없습니다. 완료로 표시했어요'); return markStep(n, si, true); } return startCards(ids, `${n}회차 · 복습`); }
-      case 'kc': return startCards(st.ids.map(kid), `${n}회차 · 새 한자`);
+      case 'rev': { const ids = reviewIds(); if (ids.length) return startCards(ids, `${n}회차 · 복습`); const pv = previewIds(); if (pv.length) return startCards(pv, `${n}회차 · 미리 복습`); pendingPlan = null; toast('아직 학습한 카드가 없어 복습을 건너뜁니다'); return markStep(n, si, true); }
+      case 'kc': return startCards(shuffle(st.ids).map(kid), `${n}회차 · 새 한자`);
       case 'kq': { const pool = st.ids.map(c => KMAP[c]); return startQuiz(`${n}회차 · 훈음 확인`, pick(pool, 10).map(k => qKanjiHun(k, pool))); }
       case 'vc': return startCards(shuffle(st.ids), `${n}회차 · 어휘`);
-      case 'pq': return startQuiz(`${n}회차 · 기출`, st.sets.flatMap(id => PMAP[id].qs.map((_, i) => probQ(PMAP[id], i))));
+      case 'pq': return startQuiz(`${n}회차 · 기출`, shuffle(st.sets.flatMap(id => PMAP[id].qs.map((_, i) => probQ(PMAP[id], i)))));
       case 'mock': return mockQuiz();
       case 'ptype': return ptypeQuiz(st.type);
       case 'cquiz': return confuseQuiz();
@@ -745,7 +757,7 @@
     <div class="sec"><div class="steps">${st.steps.map((s, i) => { const d = stepDone(n, i); return `
       <div class="step ${d ? 'done' : ''}">
         <button class="chk" data-pchk="${n}" data-si="${i}" aria-label="${d ? '완료 취소' : '완료로 표시'}">${d ? '✓' : i + 1}</button>
-        <div class="grow"><b>${s.name}</b> <span class="muted small">${stepMin(s)}분</span><div class="small muted">${esc(s.desc)}</div></div>
+        <div class="grow"><b>${s.name}</b> <span class="muted small">${stepMin(s)}분</span><div class="small muted">${esc(s.k === 'rev' ? revDesc() : s.desc)}</div></div>
         <button class="btn ${d ? '' : 'pri'}" data-prun="${n}" data-si="${i}">${d ? '다시' : '시작'}</button>
       </div>`; }).join('')}</div></div>
     <div class="sec"><button class="btn block ${fin ? '' : 'ok'}" data-act="pfin">${fin ? '완료 취소' : '이 회차 완료로 표시'}</button>
@@ -814,8 +826,8 @@
       case 'flip': if (session && !session.flip) { session.flip = true; render(); } return;
       case 'recards': { const again = [...new Set(session.again || [])]; stack.pop(); return startCards(shuffle(again), session.title + ' · 다시'); }
       case 'next': session.i++; session.picked = null; render(); window.scrollTo(0, 0); return;
-      case 'requiz': { const ses = session; stack.pop(); return startQuiz(ses.title, shuffle(ses.qs), { setId: ses.setId }); }
-      case 'rewrong': { const ses = session; stack.pop(); return startQuiz(ses.title + ' · 오답', ses.wrongIdx.map(i => ses.qs[i])); }
+      case 'requiz': { const ses = session; stack.pop(); return startQuiz(ses.title, shuffle(ses.qs).map(shuffleOpts), { setId: ses.setId }); }
+      case 'rewrong': { const ses = session; stack.pop(); return startQuiz(ses.title + ' · 오답', shuffle(ses.wrongIdx.map(i => ses.qs[i])).map(shuffleOpts)); }
       case 'mock': return mockQuiz();
       case 'ptype': return ptypeQuiz(d.type);
       case 'pwrong': return wrongProbQuiz();
