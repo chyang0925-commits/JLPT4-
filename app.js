@@ -38,13 +38,15 @@
   const KEY = 'jlpt_n4_v4';
   const DEF = {
     srs: {}, wrong: {}, best: {}, log: {}, seen: {},
-    set: { rate: 0.85, voice: '', auto: true, furi: true, timer: false, theme: 'system', daily: 10, exam: '2026-12-06', mode: 'course' },
+    set: { rate: 0.85, voice: '', auto: false, furi: true, timer: false, theme: 'system', daily: 10, exam: '2026-12-06', mode: 'course' },
     plan: { days: [0, 1, 3, 5], steps: {}, fin: {}, focus: null },
     migrated: false,
   };
   let S;
   try { S = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { S = {}; }
-  S = Object.assign({}, DEF, S); S.set = Object.assign({}, DEF.set, S.set || {}); S.plan = Object.assign({}, DEF.plan, S.plan || {});
+  S = Object.assign({}, DEF, S); S.set = Object.assign({}, DEF.set, S.set || {});
+  if (!S.autoOff1) { S.set.auto = false; S.autoOff1 = true; } // v4.3: 음성은 🔊를 눌렀을 때만
+  S.plan = Object.assign({}, DEF.plan, S.plan || {});
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { } };
   // 구버전(v3) 오답 기록 이전
   if (!S.migrated && N.LEGACY) {
@@ -122,15 +124,22 @@
       const u = new SpeechSynthesisUtterance(t);
       u.lang = 'ja-JP'; u.rate = Math.max(0.5, rate); u.pitch = 1; u.volume = 1;
       const v = this.pickVoice(); if (v) u.voice = v; else if (!this.warned) { this.warned = 1; toast('일본어 음성이 없어 기본 음성으로 읽습니다. 설정 → 음성 안내를 확인하세요'); }
-      u.onend = u.onerror = () => { if (this.cur === u) this.cur = null; };
+      u.onend = u.onerror = () => { if (this.cur === u) { this.cur = null; clearInterval(this.ka); } };
       this.cur = u; // 크롬에서 재생 도중 객체가 사라지는 문제 방지
-      if (speechSynthesis.speaking || speechSynthesis.pending) { speechSynthesis.cancel(); setTimeout(() => speechSynthesis.speak(u), 120); }
-      else { speechSynthesis.cancel(); speechSynthesis.speak(u); }
+      clearInterval(this.ka);
+      const go = () => {
+        speechSynthesis.speak(u);
+        // 크롬은 15초가 넘는 발화를 중간에 끊으므로 재생 중 주기적으로 깨워 준다
+        if (/Chrome/.test(navigator.userAgent) && !/Edg\//.test(navigator.userAgent)) this.ka = setInterval(() => { if (!speechSynthesis.speaking) return clearInterval(this.ka); speechSynthesis.pause(); speechSynthesis.resume(); }, 10000);
+      };
+      // 재생 중일 때만 끊고, 엔진이 정리될 시간을 둔 뒤 재생 (바로 이어 붙이면 앞소리가 뭉개짐)
+      if (speechSynthesis.speaking || speechSynthesis.pending) { speechSynthesis.cancel(); setTimeout(go, 150); }
+      else { if (speechSynthesis.paused) speechSynthesis.resume(); go(); }
     },
   };
   if (TTS.ok) { TTS.load(); speechSynthesis.onvoiceschanged = () => { TTS.load(); if (cur() && cur().v === 'settings') render(); }; }
   // {漢字|かな} → かな, 오쿠리가나 표시점 제거, 빈칸 처리 (띄어쓰기는 단어 경계라 남겨 둠)
-  function clean(t) { return String(t).replace(/\{([^|{}]+)\|([^|{}]+)\}/g, '$2').replace(/[（(]\s*[　 ]*\s*[)）]/g, '、').replace(/\./g, '').replace(/[ 　]+/g, ' ').trim(); }
+  function clean(t) { return String(t).replace(/\{([^|{}]+)\|([^|{}]+)\}/g, '$2').replace(/[（(]\s*[　 ]*\s*[)）]/g, '、').replace(/\./g, '').replace(/[~〜～]/g, '').replace(/(^|[」。、\s])[AB](?=「)/g, '$1').replace(/\s*\/\s*/g, '。').replace(/(\d),(?=\d{3})/g, '$1').replace(/\?/g, '？').replace(/!/g, '！').replace(/[ 　]+/g, ' ').replace(/^[、。\s]+/, '').trim(); }
   const sv = v => v.s || v.r; // 단어 음성용 텍스트 (검증된 한자 표기 또는 히라가나)
   const SPK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
   const spkBtn = (text, cls = '') => `<button class="spk ${cls}" data-say="${esc(text)}" aria-label="발음 듣기">${SPK}</button>`;
@@ -351,7 +360,7 @@
       const s = it.s;
       front = `<div class="bigw" style="font-size:22px">${esc(s.a)}</div><div class="ask">같은 의미의 표현은?</div>`;
       backHtml = `<div class="muted">≒</div><div class="rr" style="font-size:20px">${esc(s.b)}</div><div class="mm" style="font-size:16px">${esc(s.m)}</div>`;
-      say = s.a + '。' + s.b;
+      say = (s.sa || s.a) + '。' + (s.sb || s.b);
     }
     vw.after = () => { if (ses.flip && S.set.auto && ses.spoke !== ses.i + ':' + ses.ids.length) { ses.spoke = ses.i + ':' + ses.ids.length; TTS.say(say); } };
     return top(ses.title, '', true) + `
@@ -524,7 +533,7 @@
       <button class="btn" data-act="lq" data-mode="write" ${kw.length >= 4 ? '' : 'disabled'}><span>표기 고르기</span><small>닮은 한자 함정</small></button>`}
     </div></div>
     <div class="sec"><div class="sec-h"><h2>단어 목록</h2><span class="more">🔊 눌러 발음 듣기</span></div>
-      <div class="wlist">${isSyn ? items.map(s => `<div class="witem"><div class="grow"><div class="jp" style="font-weight:700">${esc(s.a)}</div><div class="r">≒ ${esc(s.b)}</div><div class="m">${esc(s.m)}</div></div>${spkBtn(s.a + '。' + s.b)}</div>`).join('') : items.map(v => wordItem(v, false)).join('')}</div></div>`;
+      <div class="wlist">${isSyn ? items.map(s => `<div class="witem"><div class="grow"><div class="jp" style="font-weight:700">${esc(s.a)}</div><div class="r">≒ ${esc(s.b)}</div><div class="m">${esc(s.m)}</div></div>${spkBtn((s.sa || s.a) + '。' + (s.sb || s.b))}</div>`).join('') : items.map(v => wordItem(v, false)).join('')}</div></div>`;
   };
   function lessonQuiz(L, mode) {
     const isSyn = L >= 10 && L <= 12;
@@ -534,8 +543,9 @@
     if (mode === 'syn') {
       qs = pick(items, 20).map(s => {
         const ds = fill(s.b, items.filter(x => x !== s).map(x => x.b), N.SYN.map(x => x.b));
-        const opts = shuffle([{ t: s.b, note: s.m, say: s.b }, ...ds.map(t => ({ t, say: t, note: (N.SYN.find(x => x.b === t) || {}).m || '' }))]);
-        return { ins: '같은 의미의 문장을 고르세요.', prompt: `<div class="q-sent"><span class="ul">${esc(s.a)}</span></div><div class="q-sub">${esc(s.m)}</div>`, sayBefore: s.a, opts, ans: opts.findIndex(o => o.t === s.b), sayAfter: s.b, wid: s.id };
+        const SB = t => { const x = N.SYN.find(y => y.b === t); return x && x.sb || t; };
+        const opts = shuffle([{ t: s.b, note: s.m, say: SB(s.b) }, ...ds.map(t => ({ t, say: SB(t), note: (N.SYN.find(x => x.b === t) || {}).m || '' }))]);
+        return { ins: '같은 의미의 문장을 고르세요.', prompt: `<div class="q-sent"><span class="ul">${esc(s.a)}</span></div><div class="q-sub">${esc(s.m)}</div>`, sayBefore: s.sa || s.a, opts, ans: opts.findIndex(o => o.t === s.b), sayAfter: s.sb || s.b, wid: s.id };
       });
     } else if (mode === 'mean') {
       qs = pick(items, 20).map(v => {
@@ -587,7 +597,7 @@
     </div></div>
     ${ks.length ? `<div class="sec"><div class="sec-h"><h2>한자 ${ks.length}</h2></div><div class="kgrid">${ks.map(k => `<button class="ktile" data-kanji="${k.k}"><span class="dot st1"></span><span class="c">${k.k}</span><span class="h">${esc(k.hun)}</span></button>`).join('')}</div></div>` : ''}
     ${vs.length ? `<div class="sec"><div class="sec-h"><h2>어휘 ${vs.length}</h2></div><div class="wlist">${vs.map(v => wordItem(v)).join('')}</div></div>` : ''}
-    ${ss.length ? `<div class="sec"><div class="sec-h"><h2>유의표현 ${ss.length}</h2></div><div class="wlist">${ss.map(s => `<div class="witem"><div class="grow"><div class="jp" style="font-weight:700">${esc(s.a)}</div><div class="r">≒ ${esc(s.b)}</div></div>${spkBtn(s.a)}</div>`).join('')}</div></div>` : ''}
+    ${ss.length ? `<div class="sec"><div class="sec-h"><h2>유의표현 ${ss.length}</h2></div><div class="wlist">${ss.map(s => `<div class="witem"><div class="grow"><div class="jp" style="font-weight:700">${esc(s.a)}</div><div class="r">≒ ${esc(s.b)}</div></div>${spkBtn(s.sa || s.a)}</div>`).join('')}</div></div>` : ''}
     ${ps.length ? `<div class="sec"><div class="sec-h"><h2>기출 문제 ${ps.length}</h2></div><div class="list">${ps.slice(0, 40).map(({ p, qi }) => { const q = p.qs[qi]; return `<div class="panel"><div class="small muted"><span class="tag ${p.type}">${TYPE_NAME[p.type]}</span> ${esc(p.title)} · ${qi + 1}번</div><div class="q-sent" style="font-size:16px;line-height:2">${p.type === 'use' ? esc(q.s) : ruby(q.s, p.type === 'ctx' ? null : q.u)}</div><div class="row"><span class="grow" style="color:var(--ok);font-weight:700">정답: ${esc(q.o[q.a][0])}</span>${q.sa ? spkBtn(q.sa) : ''}</div></div>`; }).join('')}</div></div>` : ''}
     <div class="sec"><button class="btn block" data-act="clearwrong">오답노트 비우기</button></div>`;
   };
@@ -777,7 +787,7 @@
       <div class="set-row"><label for="s-test">음성 테스트<span class="d">今日は いい 天気ですね。</span></label>${spkBtn('今日はいい天気ですね。')}</div>
       <div class="set-row stack"><span><b>또박또박 듣는 요령</b><span class="d">🔊 버튼을 3초 안에 한 번 더 누르면 0.6배 속도로 다시 읽습니다. 단어는 문장보다 조금 느리게 읽습니다.</span></span></div>
       <div class="set-row stack"><span><b>더 정확한 음성 받기</b><span class="d">iPhone·iPad: 설정 → 손쉬운 사용 → 읽기 및 말하기 → 음성 → 일본어 → Kyoko(고품질) 다운로드<br>Android: 설정 → 텍스트 음성 변환 → Google 음성 엔진 → 일본어 음성 데이터 설치<br>PC: Microsoft Edge로 열면 Nanami(자연스러운 음성)를 쓸 수 있습니다</span></span></div>
-      <div class="set-row"><label for="s-auto">정답 확인 시 자동 재생<span class="d">카드 뒤집기 · 문제 채점 후</span></label><input id="s-auto" class="toggle" type="checkbox" ${S.set.auto ? 'checked' : ''}></div>
+      <div class="set-row"><label for="s-auto">정답 확인 시 자동 재생<span class="d">끄면 🔊 버튼을 눌렀을 때만 읽습니다 (기본: 끔)</span></label><input id="s-auto" class="toggle" type="checkbox" ${S.set.auto ? 'checked' : ''}></div>
     </div></div>
     <div class="sec"><div class="panel">
       <div class="set-row"><label for="s-furi">문제 후리가나 표시<span class="d">끄면 실전처럼 한자만 보입니다</span></label><input id="s-furi" class="toggle" type="checkbox" ${S.set.furi ? 'checked' : ''}></div>

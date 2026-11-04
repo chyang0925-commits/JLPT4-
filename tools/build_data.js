@@ -204,6 +204,8 @@ for (let L = 1; L <= 15; L++) {
 // 밑줄 범위가 보기와 맞지 않던 문항 교정 (보기는 밑줄 부분의 읽기만 다룸)
 const PROB_FIX = { '15-0': { u: '楽しそうに' }, '18-9': { u: '動き' }, '21-8': { u: '何度' } };
 PROBS.forEach(p => p.qs.forEach((q, i) => { const f = PROB_FIX[p.id + '-' + i]; if (f) Object.assign(q, f); }));
+// 교재 후리가나 오류: 開けました는 あけました (ひらけました 아님)
+PROBS.forEach(p => p.qs.forEach(q => { q.s = q.s.replace('{開|ひら}け', '{開|あ}け'); }));
 // 한자읽기 문제에서 밑줄 정답 위에 후리가나가 붙어 정답이 보이던 문항 교정
 let furiLeak = 0;
 PROBS.forEach(p => { if (p.type !== 'read') return; p.qs.forEach(q => {
@@ -274,9 +276,10 @@ require('./add_speech')(out, report => {
   fs.writeFileSync(__dirname + '/../data.js', '/* JLPT N4 한자·어휘·문제 데이터 (자동 생성: tools/build_data.js) */\nwindow.N4 = ' + JSON.stringify(out) + ';\n');
   fs.writeFileSync(__dirname + '/speech_report.txt',
     '# 음성 점검 결과 — 기계가 다르게 읽는 항목은 히라가나로 바꿔 읽힘\n\n## 단어 (' + report.word.length + ')\n' + report.word.join('\n') +
-    '\n\n## 문장 후리가나 (' + report.furi.length + ')\n' + report.furi.join('\n') + '\n');
+    '\n\n## 문장 후리가나 (' + report.furi.length + ')\n' + report.furi.join('\n') +
+    '\n\n## 2차 검수: 히라가나로 고정한 읽기 (' + report.fix.length + ')\n' + report.fix.join('\n') + '\n');
   console.log('KANJI', KANJI.length, 'VOCAB', VOCAB.length, 'SYN', SYN.length, 'PROBS', PROBS.length,
     'questions', PROBS.reduce((s, p) => s + p.qs.length, 0), 'HOMO', HOMO.length);
-  console.log('speech: word→kana', report.word.length, ' furigana→kana', report.furi.length);
+  console.log('speech: word→kana', report.word.length, ' furigana→kana', report.furi.length, ' fixed', report.fix.length);
   console.log('size', fs.statSync(__dirname + '/../data.js').size);
 });

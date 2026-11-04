@@ -61,6 +61,29 @@ module.exports = function addSpeech(out, done) {
       return s.replace(re, rep);
     }
 
+    // ── 2차 검수: 기호 정리 + 기계가 잘못 읽기 쉬운 한자를 히라가나로 고정 ──
+    const PREV_KEEP_KA = ['写真', '作', '画', '専門', '音楽', '政治', '小説', '建築'];
+    function fixSpeech(t, tag) {
+      if (!t) return t;
+      let s = String(t);
+      s = s.replace(/(^|[」。、\s])[AB](?=「)/g, '$1');            // 대화문 화자 표시 A「 B「
+      s = s.replace(/[~〜～]/g, '').replace(/\s*\/\s*/g, '。').replace(/(\d),(?=\d{3})/g, '$1');
+      s = s.replace(/\?/g, '？').replace(/!/g, '！');
+      s = s.replace(/週に\s*2日/g, '週に ふつか').replace(/(?<![0-9０-９一二三四五六七八九十])[1一]日(?![本曜])/g, 'いちにち');
+      let o = '', prev = '';
+      // 후리가나 마크업이 남아 있지 않은 최종 음성 텍스트만 들어온다
+      tk.tokenize(s).forEach(x => {
+        const f = x.surface_form; let r = f;
+        if (f === '日本') r = 'にほん';
+        else if (f === '音') r = 'おと';
+        else if (f === '家' && !PREV_KEEP_KA.includes(prev)) r = 'いえ';
+        else if (f === '方' && ['この', 'その', 'あの', 'どの'].includes(prev)) r = 'かた';
+        if (r !== f) report.fix.push(`${tag}: ${f}→${r}`);
+        o += r; prev = f;
+      });
+      return o;
+    }
+    report.fix = [];
     out.VOCAB.forEach(v => { const s = spWord(v.w, v.r); if (s !== v.r) v.s = s; else if (v.s) delete v.s; });
     out.PROBS.forEach(p => p.qs.forEach((q, qi) => {
       const tag = `${p.title} ${qi + 1}번`;
@@ -84,6 +107,12 @@ module.exports = function addSpeech(out, done) {
       // 보기 순서를 섞어 내므로 번호를 가리키는 해설은 지운다
       q.o.forEach(o => { if (o[1]) o[1] = o[1].replace(/\s*△?\s*\(정답은 [①②③④1-4]번?\)/g, '').trim(); });
     }));
+    out.PROBS.forEach(p => p.qs.forEach((q, qi) => {
+      const tag = `${p.title} ${qi + 1}번`;
+      if (q.sb) q.sb = fixSpeech(q.sb, tag); if (q.sa) q.sa = fixSpeech(q.sa, tag);
+      if (q.os) q.os = q.os.map(t => t && fixSpeech(t, tag + ' 보기'));
+    }));
+    out.SYN.forEach((x, i) => { x.sa = fixSpeech(x.a, '유의표현 ' + (i + 1)); x.sb = fixSpeech(x.b, '유의표현 ' + (i + 1)); });
     function plainOf(u) { return String(u).replace(FURI, '$1'); }
     done(report);
   });
