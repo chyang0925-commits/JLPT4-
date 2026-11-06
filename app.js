@@ -265,6 +265,10 @@
         <button class="btn" data-act="confuse"><span class="k">待持特</span>모양이 닮은 한자<small>${N.CONFUSE.length}개 묶음</small></button>
         <button class="btn" data-act="homo"><span class="k">暑熱厚</span>같은 읽기 다른 한자<small>${N.HOMO.length}개 묶음</small></button>
       </div>
+    </div>
+    <div class="sec"><div class="sec-h"><h2>주제별로 묶어서</h2><span class="more">${N.THEMES.length}개 주제</span></div>
+      <p class="small muted" style="margin:-4px 0 10px">요일·신체·방향처럼 한 주제에서 갈라져 나온 한자를 함께 외웁니다.</p>
+      <div class="theme-grid">${N.THEMES.map((t, i) => { const ks = themeKanji(t); const known = ks.filter(k => stateOf(kid(k)) === 3).length; return `<button class="theme" data-theme="${i}"><span class="ti">${t.icon}</span><b>${esc(t.name)}</b><small>${ks.length}자${known ? ` · 앎 ${known}` : ''}</small></button>`; }).join('')}</div>
     </div>`;
   };
 
@@ -612,6 +616,45 @@
     <div class="list">${N.CONFUSE.map(g => `<div class="panel"><div class="cmp">${g.map(c => `<button data-kanji="${c}" ${KMAP[c] ? '' : 'disabled'}><b>${c}</b><small>${KMAP[c] ? esc(KMAP[c].hun) : '범위 외'}</small></button>`).join('')}</div></div>`).join('')}</div>`;
   VIEWS.homo = () => top('같은 읽기 다른 한자', '', true) + `<p class="small muted" style="margin-top:14px">읽기가 같아서 표기 문제에 함정으로 자주 나오는 말들입니다.</p>
     <div class="homo sec">${N.HOMO.map(h => `<div class="panel"><div class="row"><span class="rd2 grow">${esc(h.r)}</span>${spkBtn(h.r)}</div>${h.items.map(i => `<div class="it"><b>${esc(i.w)}</b><span class="muted grow">${esc(i.m)}</span>${(() => { const v = N.VOCAB.find(x => x.w === i.w && x.r === h.r) || N.VOCAB.find(x => x.w === i.w); return v ? spkBtn(sv(v), 'sm') : ''; })()}</div>`).join('')}</div>`).join('')}</div>`;
+  /* ───────── 주제별 한자 ───────── */
+  const themeKanji = t => [...new Set(t.items.map(it => it.k))];
+  const themeSay = it => it.s || it.r;
+  VIEWS.theme = (vw) => {
+    const t = N.THEMES[vw.i];
+    return top(t.name, `${themeKanji(t).length}자`, true) + `
+    <p class="small muted" style="margin-top:14px">${esc(t.desc)}</p>
+    <div class="sec"><div class="btn-grid">
+      <button class="btn pri" data-act="tcards"><span>카드로 외우기</span><small style="color:inherit;opacity:.8">이 주제 ${themeKanji(t).length}자</small></button>
+      <button class="btn" data-act="tquiz"><span>주제 퀴즈 ${Math.min(15, t.items.length)}</span><small>같은 주제끼리 보기 구성</small></button>
+    </div></div>
+    <div class="list sec">${t.items.map(it => { const k = KMAP[it.k]; const st = stateOf(kid(it.k)); return `
+      <div class="trow">
+        <button class="tk" data-kanji="${it.k}" aria-label="${it.k} 자세히"><b>${it.k}</b><i class="dot st${st}"></i></button>
+        <div style="min-width:0"><div class="jp tw"><ruby>${esc(it.w)}<rt>${esc(it.r)}</rt></ruby></div><div class="small"><b>${esc(it.m)}</b> <span class="muted">· ${esc(k.hun)}</span></div></div>
+        ${spkBtn(themeSay(it), 'sm')}
+      </div>`; }).join('')}</div>`;
+  };
+  function themeCards(i) { const t = N.THEMES[i]; startCards(shuffle(themeKanji(t)).map(kid), t.name + ' · 한자 카드'); }
+  // 같은 주제의 한자끼리 보기를 만들어, 비슷한 뜻 사이에서 정확히 구별하게 한다
+  function qThemePick(it, t) {
+    const k = KMAP[it.k]; const mates = themeKanji(t).filter(c => c !== it.k);
+    const ds = fill(it.k, shuffle(mates), N.KANJI.map(x => x.k));
+    const opts = shuffle([{ t: it.k, note: k.hun }, ...ds.map(c => ({ t: c, note: KMAP[c] ? KMAP[c].hun : '' }))]);
+    const blank = esc(it.w).split(it.k).join('<span class="tblank">○</span>');
+    return { ins: '뜻과 읽기에 맞는 한자를 고르세요.', prompt: `<div class="q-big jp">${blank}</div><div class="q-sub"><span class="jp">${esc(it.r)}</span> · ${esc(it.m)}</div>`, sayBefore: themeSay(it), opts, ans: opts.findIndex(o => o.t === it.k), optClass: 'kj', two: true, wid: kid(it.k), srsId: kid(it.k), sayAfter: themeSay(it), review: `${esc(it.w)} (${esc(it.r)}) ${esc(it.m)}`, time: 12 };
+  }
+  function qThemeHun(it, t) {
+    const k = KMAP[it.k]; const mates = themeKanji(t).filter(c => c !== it.k).map(c => KMAP[c].hun);
+    const ds = fill(k.hun, shuffle(mates), N.KANJI.map(x => x.hun));
+    const opts = shuffle([{ t: k.hun, note: [k.on.join('・'), k.kun.join('・')].filter(Boolean).join(' / ') }, ...ds.map(h => { const kk = N.KANJI.find(x => x.hun === h); return { t: h, note: kk ? kk.k : '' }; })]);
+    return { ins: '이 한자의 훈음은?', prompt: `<div class="q-big">${it.k}</div>`, opts, ans: opts.findIndex(o => o.t === k.hun), optClass: 'ko', two: true, wid: kid(it.k), srsId: kid(it.k), sayAfter: themeSay(it), explain: `<div class="small muted">예) ${esc(it.w)} (${esc(it.r)}) ${esc(it.m)}</div>`, review: it.k, time: 12 };
+  }
+  function themeQuiz(i) {
+    const t = N.THEMES[i];
+    const gens = [it => qThemePick(it, t), it => qThemeHun(it, t), it => (it.vid && VMAP[it.vid] && hasK(it.w) ? qWordRead(VMAP[it.vid]) : qThemePick(it, t))];
+    const qs = pick(t.items, 15).map((it, j) => gens[(j + Math.floor(Math.random() * 3)) % 3](it));
+    startQuiz(t.name + ' · 주제 퀴즈', qs);
+  }
   function confuseQuiz() {
     const ks = N.KANJI.filter(k => (CONF[k.k] || []).some(c => KMAP[c]));
     startQuiz('닮은 한자 구별', pick(ks, 20).map(k => qKanjiPick(k, ks)));
@@ -820,6 +863,7 @@
     if (d.pick != null) return answer(+d.pick);
     if (d.pday != null) { const x = +d.pday, a = S.plan.days; S.plan.days = a.includes(x) ? a.filter(y => y !== x) : a.concat(x).sort(); if (!S.plan.days.length) S.plan.days = [x]; save(); return render(); }
     if (d.chap) return go({ v: 'chapter', n: +d.chap });
+    if (d.theme != null) return go({ v: 'theme', i: +d.theme });
     if (d.prun) return runStep(+d.prun, +d.si);
     if (d.pchk) { const n = +d.pchk, si = +d.si, key = n + '-' + si; if (S.plan.steps[key]) { delete S.plan.steps[key]; delete S.plan.fin[n]; save(); return render(); } return markStep(n, si, true); }
     if (d.cg) return cardGrade(+d.cg);
@@ -847,6 +891,8 @@
       case 'clearwrong': S.wrong = {}; save(); toast('오답노트를 비웠습니다'); return render();
       case 'confuse': return go({ v: 'confuse' });
       case 'homo': return go({ v: 'homo' });
+      case 'tcards': return themeCards(cur().i);
+      case 'tquiz': return themeQuiz(cur().i);
       case 'cquiz': return confuseQuiz();
       case 'copybk': { const ta = $('#s-backup'); const done = () => toast('복사했습니다'); if (navigator.clipboard) navigator.clipboard.writeText(ta.value).then(done, () => { ta.select(); toast('텍스트를 선택했습니다. 직접 복사하세요'); }); else { ta.select(); } return; }
       case 'loadbk': { try { const o = JSON.parse($('#s-backup').value); ['srs', 'wrong', 'best', 'log'].forEach(k => { if (o[k]) S[k] = o[k]; }); save(); toast('기록을 불러왔습니다'); } catch (err) { toast('형식이 올바르지 않습니다. 복사한 내용을 그대로 붙여 넣으세요'); } return render(); }

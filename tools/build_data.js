@@ -268,7 +268,22 @@ for (let L = 1; L <= 15; L++) {
   if (L >= 10 && L <= 12) { LEGACY[L] = V.map((_, i) => 's' + (synBase + i)); synBase += V.length; }
   else LEGACY[L] = V.map(r => (L === 13 || L === 14) ? r[1] + '|' + r[0] : String(r[0]).trim() + '|' + String(r[1] || r[0]).trim());
 }
+// 주제별 한자 묶음 (tools/themes.txt)
+const THEMES = []; const themeWarn = [];
+fs.readFileSync(__dirname + '/themes.txt', 'utf8').split('\n').forEach(line => {
+  line = line.trim(); if (!line) return;
+  if (line.startsWith('##')) return;
+  if (line.startsWith('#')) { const m = line.match(/^#\s*([^|]+)\|([^|]+)\|(.+)$/); if (m) THEMES.push({ name: m[1].trim(), icon: m[2].trim(), desc: m[3].trim(), items: [] }); return; }
+  const [k, w, r, m] = line.split('|'); const T = THEMES[THEMES.length - 1];
+  if (!KANJI.find(x => x.k === k)) { themeWarn.push('한자 없음 ' + k); return; }
+  if (!w.includes(k)) themeWarn.push('단어에 한자 없음 ' + k + ' ' + w);
+  const v = VOCAB.find(x => x.w === w && x.r === r) || VOCAB.find(x => x.w === w);
+  if (v && v.r !== r) themeWarn.push(`읽기 다름 ${w} 내 ${r} / 교재 ${v.r}`);
+  T.items.push(Object.assign({ k, w, r, m }, v ? { vid: v.w + '|' + v.r } : {}));
+});
+console.log('THEMES', THEMES.length, THEMES.reduce((s, t) => s + t.items.length, 0), 'warn', themeWarn);
 const out = {
+  THEMES,
   version: '4.0', LEGACY, LESSON_INFO, KANJI, VOCAB, SYN, PROBS,
   CONFUSE: CONFUSE.map(g => g.filter(c => kanjiSet.has(c) || true)), HOMO,
 };

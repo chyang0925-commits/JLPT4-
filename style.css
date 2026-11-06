@@ -300,3 +300,17 @@ textarea { width: 100%; min-height: 120px; font-size: 12px; font-family: ui-mono
 .opt.has-spk .note { grid-column: 2 / 4; }
 .spk.sm { width: 32px; height: 32px; }
 .spk.sm svg { width: 15px; height: 15px; }
+
+/* ── 주제별 한자 ── */
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.theme { display: grid; justify-items: center; gap: 2px; padding: 12px 6px 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; text-align: center; min-width: 0; }
+.theme .ti { font-family: var(--f-kanji); font-size: 30px; line-height: 1.1; color: var(--ai); }
+.theme b { font-size: 14px; overflow-wrap: anywhere; }
+.theme small { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.trow { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 12px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 8px 12px 8px 8px; }
+.trow .tk { position: relative; width: 56px; height: 56px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); display: grid; place-items: center; }
+.trow .tk b { font-family: var(--f-kanji); font-size: 32px; font-weight: 600; }
+.trow .tk .dot { position: absolute; top: 5px; right: 5px; }
+.trow .tw { font-size: 19px; line-height: 1.6; }
+.trow .tw rt { font-size: 11px; color: var(--ink-3); }
+.q-big .tblank { color: var(--ai); }

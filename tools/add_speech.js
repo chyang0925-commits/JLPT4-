@@ -112,6 +112,7 @@ module.exports = function addSpeech(out, done) {
       if (q.sb) q.sb = fixSpeech(q.sb, tag); if (q.sa) q.sa = fixSpeech(q.sa, tag);
       if (q.os) q.os = q.os.map(t => t && fixSpeech(t, tag + ' 보기'));
     }));
+    (out.THEMES || []).forEach(t => t.items.forEach(it => { const v = it.vid && out.VOCAB.find(x => x.w + '|' + x.r === it.vid); const sp = v ? (v.s || v.r) : spWord(it.w, it.r); if (sp !== it.r) it.s = sp; }));
     out.SYN.forEach((x, i) => { x.sa = fixSpeech(x.a, '유의표현 ' + (i + 1)); x.sb = fixSpeech(x.b, '유의표현 ' + (i + 1)); });
     function plainOf(u) { return String(u).replace(FURI, '$1'); }
     done(report);
