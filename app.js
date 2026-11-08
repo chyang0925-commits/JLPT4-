@@ -37,7 +37,7 @@
   /* ───────── 저장소 ───────── */
   const KEY = 'jlpt_n4_v4';
   const DEF = {
-    srs: {}, wrong: {}, best: {}, log: {}, seen: {},
+    srs: {}, wrong: {}, best: {}, log: {}, seen: {}, listen: {},
     set: { rate: 0.85, voice: '', auto: false, furi: true, timer: false, theme: 'system', daily: 10, exam: '2026-12-06', mode: 'course' },
     plan: { days: [0, 1, 3, 5], steps: {}, fin: {}, focus: null },
     migrated: false,
@@ -568,6 +568,7 @@
   VIEWS.prob = () => {
     const groups = [['read', [1, 2, 3]], ['write', [4, 5, 6]], ['ctx', [7, 8, 9]], ['syn', [10, 11, 12]], ['use', [13, 14]], ['mix', [15]]];
     return top('기출 문제', `${N.PROBS.reduce((s, p) => s + p.qs.length, 0)}문항`, false) + `
+    <div class="sec"><button class="lbanner" data-act="listen"><span class="li">聴</span><span class="grow"><b>청해 듣기</b><small>교재 음원 한 문제씩 · 한국어 해설 음성</small></span><span class="muted">${LPACK ? `${lItems().filter(lDone).length}/${lItems().length}` : '불러오기 →'}</span></button></div>
     <div class="sec"><div class="btn-grid">
       <button class="btn pri" data-act="mock"><span>실전 모의 25문항</span><small style="color:inherit;opacity:.8">5유형 섞어서 · 타이머 ${S.set.timer ? '켜짐' : '꺼짐'}</small></button>
       <button class="btn" data-act="pwrong"><span>틀린 기출만</span><small>${Object.keys(S.wrong).filter(k => k.startsWith('p:')).length}문항</small></button>
@@ -818,6 +819,169 @@
     ${n < PLAN_N ? `<div class="sec"><button class="btn block" data-chap="${n + 1}">다음 회차 미리 보기 →</button></div>` : ''}`;
   };
 
+  /* ───────── 청해 (교재 음원 + 한국어 해설) ─────────
+     음원과 해설 팩은 공개 저장소에 올리지 않고, 사용자가 가진 「청해 팩」 파일을 기기(IndexedDB)에 한 번 불러와 쓴다. */
+  const LDB = {
+    db: null,
+    open() { return this.db ? Promise.resolve(this.db) : new Promise((res, rej) => { const r = indexedDB.open('jlpt_listen', 1); r.onupgradeneeded = () => r.result.createObjectStore('files'); r.onsuccess = () => { this.db = r.result; res(this.db); }; r.onerror = () => rej(r.error); }); },
+    tx(mode, fn) { return this.open().then(db => new Promise((res, rej) => { const t = db.transaction('files', mode); const st = t.objectStore('files'); let out; const r = fn(st); if (r) r.onsuccess = () => { out = r.result; }; t.oncomplete = () => res(out); t.onerror = () => rej(t.error); })); },
+    put(k, v) { return this.tx('readwrite', st => st.put(v, k)); },
+    get(k) { return this.tx('readonly', st => st.get(k)); },
+    keys() { return this.tx('readonly', st => st.getAllKeys()); },
+    clear() { return this.tx('readwrite', st => st.clear()); },
+  };
+  let LPACK = null, LKEYS = new Set(), LREADY = false, LWAIT = false;
+  const LTYPE = {
+    1: ['과제 이해', '대화를 듣고, 이 사람이 이제부터(먼저) 무엇을 하는지 고르는 문제'],
+    2: ['포인트 이해', '질문을 먼저 듣고, 대화 속에서 이유·포인트를 찾아 고르는 문제'],
+    3: ['발화 표현', '그림 속 화살표 인물이 할 말로 알맞은 것을 고르는 문제'],
+    4: ['즉시 응답', '짧은 말을 듣고 알맞은 대답을 고르는 문제'],
+  };
+  async function loadPack() {
+    try { LPACK = await LDB.get('pack.json') || null; LKEYS = new Set(await LDB.keys()); } catch (e) { LPACK = null; }
+    LREADY = true;
+  }
+  if ('indexedDB' in window) loadPack().then(() => { if (LWAIT) { LWAIT = false; render(); } }); else LREADY = true;
+  function loadJSZip() {
+    if (window.JSZip) return Promise.resolve(window.JSZip);
+    return new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; sc.onload = () => res(window.JSZip); sc.onerror = () => rej(new Error('zip')); document.head.appendChild(sc); });
+  }
+  async function importFiles(files) {
+    files = [...files];
+    // zip 은 풀어서 안의 mp3·json 을 꺼낸다 (휴대폰으로 옮기기 쉽게 3개 zip 으로 나눠 둠)
+    const zips = files.filter(f => /\.zip$/i.test(f.name));
+    if (zips.length) {
+      toast('압축을 푸는 중…');
+      try {
+        const JSZip = await loadJSZip();
+        for (const z of zips) {
+          const zip = await JSZip.loadAsync(z);
+          for (const e of Object.values(zip.files)) {
+            if (e.dir) continue; const name = e.name.split('/').pop();
+            if (/\.mp3$/i.test(name)) files.push(new File([await e.async('blob')], name, { type: 'audio/mpeg' }));
+            else if (/\.json$/i.test(name)) files.push(new File([await e.async('string')], name, { type: 'application/json' }));
+          }
+        }
+      } catch (e) { toast('zip 파일을 열지 못했습니다. 인터넷 연결을 확인해 주세요'); }
+    }
+    files = files.filter(f => /\.(mp3|json)$/i.test(f.name));
+    if (!files.length) { toast('청해 팩 zip(또는 mp3·json) 파일을 골라 주세요'); return; }
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { }
+    let n = 0, bad = 0;
+    for (const f of files) {
+      try {
+        if (/\.json$/i.test(f.name)) { const j = JSON.parse(await f.text()); if (!j.items) throw 0; await LDB.put('pack.json', j); }
+        else await LDB.put(f.name, f);
+        n++; if (n % 10 === 0) toast(`불러오는 중… ${n}/${files.length}`);
+      } catch (e) { bad++; }
+    }
+    await loadPack();
+    toast(`${n}개 파일을 저장했습니다${bad ? ` (실패 ${bad})` : ''}`);
+    render();
+  }
+  const lItems = () => (LPACK ? LPACK.items : []);
+  const lDone = it => S.listen && S.listen[it.id];
+  // 한국어 해설 안의 일본어(「…」·가나·한자)는 일본어 음성으로, 나머지는 한국어 음성으로 이어서 읽는다
+  function splitLang(text) {
+    const segs = []; let cur = null;
+    for (const ch of String(text)) {
+      const k = /[가-힣]/.test(ch) ? 'ko' : /[ぁ-ゖァ-ヺー一-鿿々〜]/.test(ch) ? 'ja' : null;
+      if (k && (!cur || cur.l !== k)) { cur = { l: k, t: '' }; segs.push(cur); }
+      if (!cur) { cur = { l: 'ko', t: '' }; segs.push(cur); }
+      cur.t += ch;
+    }
+    // 일본어 바로 앞의 숫자(7時·3階 등)는 일본어 쪽으로 옮긴다
+    for (let i = 1; i < segs.length; i++) if (segs[i].l === 'ja') { const m = segs[i - 1].t.match(/[0-9０-９,]+[「『\s]*$/); if (m) { segs[i - 1].t = segs[i - 1].t.slice(0, -m[0].length); segs[i].t = m[0] + segs[i].t; } }
+    return segs.map(x => ({ l: x.l, t: x.t.replace(/[「」『』()（）]/g, ' ').trim() })).filter(x => x.t && /[가-힣ぁ-ゖァ-ヺ一-鿿0-9]/.test(x.t));
+  }
+  function sayKo(text) {
+    if (!TTS.ok) { toast('이 브라우저는 음성 재생을 지원하지 않습니다'); return; }
+    const a = $('#lau'); if (a) a.pause();
+    const all = speechSynthesis.getVoices();
+    const good = v => (/Natural|Neural|Online|Google|Yuna|Premium|Enhanced/i.test(v.name) ? 1 : 0);
+    const ko = all.filter(x => /^ko/i.test(x.lang)).sort((a, b) => good(b) - good(a))[0];
+    if (!ko) toast('한국어 음성이 없어 기본 음성으로 읽습니다');
+    const ja = TTS.pickVoice();
+    const us = splitLang(text).map(seg => {
+      const u = new SpeechSynthesisUtterance(seg.l === 'ja' ? clean(seg.t) : seg.t);
+      if (seg.l === 'ja') { u.lang = 'ja-JP'; if (ja) u.voice = ja; u.rate = Math.max(0.5, S.set.rate * 0.95); }
+      else { u.lang = 'ko-KR'; if (ko) u.voice = ko; u.rate = 1.0; }
+      return u;
+    });
+    if (!us.length) return;
+    TTS.cur = us; // 재생 중 객체가 사라지지 않게 붙잡아 둔다
+    const go = () => us.forEach(u => speechSynthesis.speak(u));
+    if (speechSynthesis.speaking || speechSynthesis.pending) { speechSynthesis.cancel(); setTimeout(go, 150); } else go();
+  }
+  function importBox() {
+    return `<div class="panel small">
+      <b>청해 팩 불러오기</b>
+      <p class="muted" style="margin:6px 0 10px"><b>N4_listening_1.zip · _2 · _3 세 파일</b>을 한 번에 골라 주세요(풀어 둔 mp3·json도 됩니다). 이 기기에 저장되어 다음부터는 바로 들을 수 있습니다. (기기마다 한 번씩 필요)</p>
+      <div class="btn-grid">
+        <label class="btn pri"><span>파일 고르기</span><small style="color:inherit;opacity:.8">zip 3개 한꺼번에 선택</small><input type="file" id="limp" multiple accept=".zip,.mp3,.json,application/zip,audio/mpeg,application/json" hidden></label>
+        <label class="btn"><span>폴더째 고르기</span><small>PC·안드로이드 크롬</small><input type="file" id="limpd" webkitdirectory multiple hidden></label>
+      </div>
+    </div>`;
+  }
+  VIEWS.listen = () => {
+    if (!LREADY) { LWAIT = true; return top('청해', '', true) + '<p class="empty">불러오는 중…</p>'; }
+    const items = lItems();
+    if (!LPACK) return top('청해', '교재 음원', true) + `<div class="sec">${importBox()}</div>
+      <div class="sec panel small muted">교재 음원은 저작물이라 공개된 앱 주소에는 넣지 않았습니다. 바탕화면 음원 폴더의 zip 3개를 휴대폰으로 옮긴 뒤(카카오톡 나에게 보내기·구글 드라이브 등) 위 버튼으로 불러오세요.</div>`;
+    const missing = items.filter(it => !LKEYS.has(it.f)).length;
+    const done = items.filter(lDone).length;
+    const next = items.find(it => !lDone(it));
+    return top('청해', `${done}/${items.length}문제`, true) + `
+    ${missing ? `<div class="sec panel small" style="border-color:var(--ng)">음원 ${missing}개가 아직 없습니다. mp3 파일을 모두 골라 다시 불러와 주세요.${importBox()}</div>` : ''}
+    <div class="sec"><div class="btn-grid">
+      <button class="btn pri" data-act="lnext" ${next ? '' : 'disabled'}><span>이어 듣기</span><small style="color:inherit;opacity:.8">${next ? esc(lTitle(next)) : '모두 들었습니다'}</small></button>
+      <button class="btn" data-act="lrand"><span>무작위 한 문제</span><small>틈날 때 한 개씩</small></button>
+    </div></div>
+    ${LPACK.sets.map(st => { const its = items.filter(it => it.set === st.id); const d = its.filter(lDone).length; return `
+    <div class="sec"><div class="sec-h"><h2>${esc(st.name)}</h2><span class="more">${d}/${its.length}</span></div>
+      <div class="lgrid">${[1, 2, 3, 4].map(t => { const ts = its.filter(it => it.type === t); if (!ts.length) return ''; return `<div class="lrow"><span class="lt">문제${t}<small>${LTYPE[t][0]}</small></span><span class="lnums">${ts.map(it => { const r = lDone(it); return `<button class="lno ${r ? (r.ok === false ? 'ng' : 'ok') : ''}" data-li="${items.indexOf(it)}">${it.no}</button>`; }).join('')}</span></div>`; }).join('')}</div>
+    </div>`; }).join('')}
+    <div class="sec"><button class="btn block" data-act="lclear">이 기기에서 청해 팩 지우기</button></div>`;
+  };
+  const lTitle = it => { const st = LPACK.sets.find(s => s.id === it.set); return `${st ? st.name : ''} · 문제${it.type} ${it.no}번`; };
+  VIEWS.litem = (vw) => {
+    const items = lItems(); const it = items[vw.i]; if (!it) return top('청해', '', true);
+    const st = LPACK.sets.find(s => s.id === it.set);
+    const rec = lDone(it); const shown = vw.shown || !!rec;
+    const nOpt = it.type >= 3 ? 3 : 4;
+    vw.after = async () => {
+      const a = $('#lau'); if (!a) return;
+      try { const b = await LDB.get(it.f); if (!b) { $('#lerr').hidden = false; return; } if (vw.url) URL.revokeObjectURL(vw.url); vw.url = URL.createObjectURL(b); a.src = vw.url; a.playbackRate = S.set.lrate || 1; if (vw.keepT) { a.addEventListener('loadedmetadata', () => { a.currentTime = vw.keepT; vw.keepT = 0; }, { once: true }); } } catch (e) { $('#lerr').hidden = false; }
+    };
+    return top(st ? st.name : '청해', `문제${it.type} · ${it.no}번`, true) + `
+    <div class="sec"><div class="panel">
+      <div class="row"><span class="tag">${LTYPE[it.type][0]}</span><span class="small muted grow">${LTYPE[it.type][1]}</span></div>
+      <audio id="lau" controls preload="auto" style="width:100%;margin-top:12px"></audio>
+      <p id="lerr" class="small" style="color:var(--ng)" hidden>이 문제의 음원(${esc(it.f)})이 이 기기에 없습니다. 청해 화면에서 다시 불러와 주세요.</p>
+      <div class="lspeed">${[0.8, 0.9, 1, 1.2].map(r => `<button class="${(S.set.lrate || 1) === r ? 'on' : ''}" data-lrate="${r}">${r}×</button>`).join('')}<button data-act="lback5">↺ 5초</button></div>
+    </div></div>
+    <div class="sec">
+      ${it.type >= 3 || it.ans ? `<div class="small muted" style="margin-bottom:6px">${it.type >= 3 ? '음성 속 보기 번호를 고르세요' : '교재를 보며 풀었다면 번호를 고르세요'}</div>
+      <div class="lpick">${Array.from({ length: nOpt }, (_, k) => k + 1).map(k => { let c = ''; if (shown && it.ans) c = k === it.ans ? 'ok' : (vw.pick === k ? 'ng' : ''); return `<button class="${c}" data-lpick="${k}" ${shown ? 'disabled' : ''}>${k}</button>`; }).join('')}</div>` : ''}
+      ${shown ? '' : `<button class="btn block" style="margin-top:10px" data-act="lshow">정답·해설 보기</button>`}
+    </div>
+    ${shown ? `<div class="sec"><div class="panel lans">
+      <div class="row"><b class="grow">정답 ${it.ans ? it.ans + '번 · ' : ''}${esc(it.ansText)}</b>${vw.pick && it.ans ? `<span class="tag" style="color:${vw.pick === it.ans ? 'var(--ok)' : 'var(--ng)'}">${vw.pick === it.ans ? '맞힘' : '틀림'}</span>` : ''}</div>
+      ${it.q ? `<div class="jp small" style="margin-top:6px">질문: ${esc(it.q)}</div>` : ''}
+      <p style="margin:10px 0 0;line-height:1.7">${esc(it.exp)}</p>
+      <div class="btn-grid" style="margin-top:12px">
+        <button class="btn pri" data-act="lko"><span>🔊 해설 듣기</span><small style="color:inherit;opacity:.8">한국어 음성</small></button>
+        <button class="btn" data-act="lscript"><span>${vw.script ? '스크립트 닫기' : '스크립트 보기'}</span><small>줄을 누르면 그 부분부터 재생</small></button>
+      </div>
+      ${!it.ans && !rec ? `<div class="row" style="margin-top:10px;gap:8px"><span class="small muted grow">맞혔나요?</span><button class="btn" data-lself="1">맞힘</button><button class="btn" data-lself="0">틀림</button></div>` : ''}
+      ${vw.script ? `<div class="lscript">${LPACK.note ? `<p class="small muted" style="margin:0 0 6px">${esc(LPACK.note)}</p>` : ''}${it.script.map(([t, s]) => `<button class="jp" data-lseek="${t}"><span class="muted">${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}</span> ${esc(s)}</button>`).join('')}</div>` : ''}
+    </div></div>` : ''}
+    <div class="sec"><div class="btn-grid">
+      <button class="btn" data-li="${vw.i - 1}" data-rep="1" ${vw.i > 0 ? '' : 'disabled'}><span>← 이전</span></button>
+      <button class="btn pri" data-li="${vw.i + 1}" data-rep="1" ${vw.i < items.length - 1 ? '' : 'disabled'}><span>다음 문제 →</span></button>
+    </div></div>`;
+  };
+  function lMark(it, ok) { S.listen = S.listen || {}; S.listen[it.id] = { ok, at: Date.now() }; logToday(); save(); }
   /* ───────── 설정 ───────── */
   VIEWS.settings = () => {
     TTS.load();
@@ -864,6 +1028,11 @@
     if (d.pday != null) { const x = +d.pday, a = S.plan.days; S.plan.days = a.includes(x) ? a.filter(y => y !== x) : a.concat(x).sort(); if (!S.plan.days.length) S.plan.days = [x]; save(); return render(); }
     if (d.chap) return go({ v: 'chapter', n: +d.chap });
     if (d.theme != null) return go({ v: 'theme', i: +d.theme });
+    if (d.li != null) { const i = +d.li; if (i < 0 || i >= lItems().length) return; if (d.rep) { stack.pop(); } return go({ v: 'litem', i }); }
+    if (d.lrate) { S.set.lrate = +d.lrate; save(); const a = $('#lau'); if (a) a.playbackRate = +d.lrate; document.querySelectorAll('[data-lrate]').forEach(b => b.classList.toggle('on', b.dataset.lrate === d.lrate)); return; }
+    if (d.lseek != null) { const a = $('#lau'); if (a) { a.currentTime = Math.max(0, +d.lseek - 0.3); a.play(); } return; }
+    if (d.lpick) { const vw = cur(); const it = lItems()[vw.i]; vw.pick = +d.lpick; vw.shown = true; lMark(it, it.ans ? vw.pick === it.ans : null); return render(); }
+    if (d.lself != null) { const it = lItems()[cur().i]; lMark(it, d.lself === '1'); return render(); }
     if (d.prun) return runStep(+d.prun, +d.si);
     if (d.pchk) { const n = +d.pchk, si = +d.si, key = n + '-' + si; if (S.plan.steps[key]) { delete S.plan.steps[key]; delete S.plan.fin[n]; save(); return render(); } return markStep(n, si, true); }
     if (d.cg) return cardGrade(+d.cg);
@@ -871,6 +1040,14 @@
     switch (d.act) {
       case 'back': return back();
       case 'settings': return go({ v: 'settings' });
+      case 'listen': return go({ v: 'listen' });
+      case 'lnext': { const i = lItems().findIndex(it => !lDone(it)); if (i >= 0) go({ v: 'litem', i }); return; }
+      case 'lrand': { const its = lItems(); const pool = its.map((_, i) => i).filter(i => !lDone(its[i])); const arr = pool.length ? pool : its.map((_, i) => i); return go({ v: 'litem', i: arr[Math.floor(Math.random() * arr.length)] }); }
+      case 'lshow': { const vw = cur(); vw.shown = true; const it = lItems()[vw.i]; if (!it.ans && !lDone(it)) { /* 자기 채점 대기 */ } else if (!lDone(it)) lMark(it, null); return render(); }
+      case 'lko': { const it = lItems()[cur().i]; return sayKo(`정답은 ${it.ans ? it.ans + '번, ' : ''}${it.ansText}. ${it.exp}`); }
+      case 'lscript': { const vw = cur(); vw.script = !vw.script; const a = $('#lau'); vw.keepT = a ? a.currentTime : 0; return render(); }
+      case 'lback5': { const a = $('#lau'); if (a) a.currentTime = Math.max(0, a.currentTime - 5); return; }
+      case 'lclear': { const vw = cur(); if (!vw.confirm) { vw.confirm = 1; toast('한 번 더 누르면 이 기기에 저장된 청해 팩을 지웁니다'); return; } LDB.clear().then(loadPack).then(() => { toast('지웠습니다'); render(); }); return; }
       case 'focus': { const n = cur().n; S.plan.focus = S.plan.focus && S.plan.focus.n === n ? null : { n, t0: Date.now() }; save(); return render(); }
       case 'pfin': { const n = cur().n; if (S.plan.fin[n]) delete S.plan.fin[n]; else finishChapter(n); save(); return render(); }
       case 'today': { const q = todayQueue(); return startCards(shuffle(q.dueK.concat(q.dueV)).concat(q.newK).slice(0, 40), '오늘의 학습'); }
@@ -905,6 +1082,7 @@
     if (t.id === 's-rate') { S.set.rate = +t.value; save(); const d = t.parentElement.querySelector('.d'); if (d) d.textContent = '현재 ' + S.set.rate.toFixed(2) + '배'; }
   });
   document.addEventListener('change', e => {
+    if (e.target.id === 'limp' || e.target.id === 'limpd') { importFiles(e.target.files); return; }
     const t = e.target; const m = { 's-mode': 'mode', 's-voice': 'voice', 's-auto': 'auto', 's-furi': 'furi', 's-timer': 'timer', 's-daily': 'daily', 's-exam': 'exam', 's-theme': 'theme' }[t.id];
     if (!m) return;
     S.set[m] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? Math.max(0, Math.min(50, +t.value || 0)) : t.value;

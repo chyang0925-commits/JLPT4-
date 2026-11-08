@@ -314,3 +314,27 @@ textarea { width: 100%; min-height: 120px; font-size: 12px; font-family: ui-mono
 .trow .tw { font-size: 19px; line-height: 1.6; }
 .trow .tw rt { font-size: 11px; color: var(--ink-3); }
 .q-big .tblank { color: var(--ai); }
+
+/* ── 청해 ── */
+.lbanner { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); }
+.lbanner .li { font-family: var(--f-kanji); font-size: 30px; color: var(--ai); width: 44px; height: 44px; border-radius: 12px; background: var(--surface-2); display: grid; place-items: center; }
+.lbanner small { display: block; font-size: 12px; color: var(--ink-3); }
+.lgrid { display: grid; gap: 8px; }
+.lrow { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; align-items: start; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; }
+.lrow .lt { font-weight: 700; font-size: 14px; }
+.lrow .lt small { display: block; font-weight: 400; font-size: 11px; color: var(--ink-3); }
+.lnums { display: flex; flex-wrap: wrap; gap: 6px; }
+.lno { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.lno.ok { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+.lno.ng { background: var(--ng-soft, var(--surface-2)); border-color: var(--ng); color: var(--ng); }
+.lspeed { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.lspeed button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.lspeed button.on { background: var(--ai); border-color: var(--ai); color: var(--surface); }
+.lpick { display: grid; grid-template-columns: repeat(auto-fit, minmax(56px, 1fr)); gap: 8px; }
+.lpick button { height: 52px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); font-size: 20px; font-weight: 700; }
+.lpick button.ok { background: var(--ok); border-color: var(--ok); color: var(--surface); }
+.lpick button.ng { background: var(--ng); border-color: var(--ng); color: var(--surface); }
+.lscript { display: grid; gap: 2px; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.lscript button { text-align: left; background: none; border: 0; padding: 6px 4px; border-radius: 8px; line-height: 1.6; font-size: 15px; overflow-wrap: anywhere; }
+.lscript button:hover { background: var(--surface-2); }
+.lscript .muted { font-family: var(--f-ui); font-size: 11px; margin-right: 6px; font-variant-numeric: tabular-nums; }
