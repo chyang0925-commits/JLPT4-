@@ -89,6 +89,12 @@
      · 단어는 문장보다 느리게, 끝에 마침표를 붙여 끝음이 잘리지 않게
      · 재생 중 다시 누르면 취소 후 잠깐 쉬었다 재생(크롬 앞부분 잘림 방지)
      · 같은 버튼을 3초 안에 다시 누르면 아주 천천히(0.6배) 다시 읽기 */
+  // 아이폰·아이패드: 버튼을 누른 그 순간에 speak() 해야 소리가 난다(지연 재생은 막힘)
+  const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  function watchStart(u) {
+    let started = false; const prev = u.onstart; u.onstart = e => { started = true; if (prev) prev(e); };
+    setTimeout(() => { if (!started && IOS) toast('소리가 안 나면 아이폰 옆의 무음 스위치를 꺼 주세요. 무음 모드에서는 음성이 나오지 않습니다'); }, 2500);
+  }
   const TTS = {
     ok: 'speechSynthesis' in window,
     voices: [], last: '', lastAt: 0, cur: null,
@@ -133,6 +139,8 @@
         if (/Chrome/.test(navigator.userAgent) && !/Edg\//.test(navigator.userAgent)) this.ka = setInterval(() => { if (!speechSynthesis.speaking) return clearInterval(this.ka); speechSynthesis.pause(); speechSynthesis.resume(); }, 10000);
       };
       // 재생 중일 때만 끊고, 엔진이 정리될 시간을 둔 뒤 재생 (바로 이어 붙이면 앞소리가 뭉개짐)
+      watchStart(u);
+      if (IOS) { speechSynthesis.cancel(); if (speechSynthesis.paused) speechSynthesis.resume(); go(); return; }
       if (speechSynthesis.speaking || speechSynthesis.pending) { speechSynthesis.cancel(); setTimeout(go, 150); }
       else { if (speechSynthesis.paused) speechSynthesis.resume(); go(); }
     },
@@ -911,6 +919,8 @@
     if (!us.length) return;
     TTS.cur = us; // 재생 중 객체가 사라지지 않게 붙잡아 둔다
     const go = () => us.forEach(u => speechSynthesis.speak(u));
+    watchStart(us[0]);
+    if (IOS) { speechSynthesis.cancel(); if (speechSynthesis.paused) speechSynthesis.resume(); go(); return; }
     if (speechSynthesis.speaking || speechSynthesis.pending) { speechSynthesis.cancel(); setTimeout(go, 150); } else go();
   }
   function importBox() {
@@ -973,6 +983,7 @@
         <button class="btn pri" data-act="lko"><span>🔊 해설 듣기</span><small style="color:inherit;opacity:.8">한국어 음성</small></button>
         <button class="btn" data-act="lscript"><span>${vw.script ? '스크립트 닫기' : '스크립트 보기'}</span><small>줄을 누르면 그 부분부터 재생</small></button>
       </div>
+      ${IOS ? '<p class="small muted" style="margin:8px 0 0">아이폰은 무음 스위치가 켜져 있으면 해설 음성이 나오지 않습니다.</p>' : ''}
       ${!it.ans && !rec ? `<div class="row" style="margin-top:10px;gap:8px"><span class="small muted grow">맞혔나요?</span><button class="btn" data-lself="1">맞힘</button><button class="btn" data-lself="0">틀림</button></div>` : ''}
       ${vw.script ? `<div class="lscript">${LPACK.note ? `<p class="small muted" style="margin:0 0 6px">${esc(LPACK.note)}</p>` : ''}${it.script.map(([t, s]) => `<button class="jp" data-lseek="${t}"><span class="muted">${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}</span> ${esc(s)}</button>`).join('')}</div>` : ''}
     </div></div>` : ''}
