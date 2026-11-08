@@ -338,3 +338,6 @@ textarea { width: 100%; min-height: 120px; font-size: 12px; font-family: ui-mono
 .lscript button { text-align: left; background: none; border: 0; padding: 6px 4px; border-radius: 8px; line-height: 1.6; font-size: 15px; overflow-wrap: anywhere; }
 .lscript button:hover { background: var(--surface-2); }
 .lscript .muted { font-family: var(--f-ui); font-size: 11px; margin-right: 6px; font-variant-numeric: tabular-nums; }
+.lp .lp-title { display: block; font-size: 18px; }
+.lp-ctl { display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 10px; margin-top: 14px; }
+.lp-ctl .btn { min-height: 56px; font-size: 18px; justify-content: center; }

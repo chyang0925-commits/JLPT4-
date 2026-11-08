@@ -946,7 +946,8 @@
     <div class="sec"><div class="btn-grid">
       <button class="btn pri" data-act="lnext" ${next ? '' : 'disabled'}><span>이어 듣기</span><small style="color:inherit;opacity:.8">${next ? esc(lTitle(next)) : '모두 들었습니다'}</small></button>
       <button class="btn" data-act="lrand"><span>무작위 한 문제</span><small>틈날 때 한 개씩</small></button>
-    </div></div>
+    </div>
+    <button class="lbanner" style="margin-top:8px" data-act="lplay"><span class="li">▶</span><span class="grow"><b>연속 듣기 (자동 재생)</b><small>문제를 5초 간격으로 쭉 · 화면이 꺼져도 계속</small></span></button></div>
     ${LPACK.sets.map(st => { const its = items.filter(it => it.set === st.id); const d = its.filter(lDone).length; return `
     <div class="sec"><div class="sec-h"><h2>${esc(st.name)}</h2><span class="more">${d}/${its.length}</span></div>
       <div class="lgrid">${[1, 2, 3, 4].map(t => { const ts = its.filter(it => it.type === t); if (!ts.length) return ''; return `<div class="lrow"><span class="lt">문제${t}<small>${LTYPE[t][0]}</small></span><span class="lnums">${ts.map(it => { const r = lDone(it); return `<button class="lno ${r ? (r.ok === false ? 'ng' : 'ok') : ''}" data-li="${items.indexOf(it)}">${it.no}</button>`; }).join('')}</span></div>`; }).join('')}</div>
@@ -990,6 +991,100 @@
     <div class="sec"><div class="btn-grid">
       <button class="btn" data-li="${vw.i - 1}" data-rep="1" ${vw.i > 0 ? '' : 'disabled'}><span>← 이전</span></button>
       <button class="btn pri" data-li="${vw.i + 1}" data-rep="1" ${vw.i < items.length - 1 ? '' : 'disabled'}><span>다음 문제 →</span></button>
+    </div></div>`;
+  };
+  /* ── 청해 연속 듣기: 문제 음성 → (무음 N초) → 다음 문제 …
+     쉬는 동안에도 무음 오디오를 재생해 두어야 휴대폰 화면이 꺼져도 끊기지 않는다 */
+  const LP = { list: [], i: 0, on: false, gap: false, url: null, sil: {}, key: '' };
+  function silenceUrl(sec) {
+    if (LP.sil[sec]) return LP.sil[sec];
+    const rate = 8000, n = rate * sec, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const w = (o, s) => [...s].forEach((c, k) => v.setUint8(o + k, c.charCodeAt(0)));
+    w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+    return (LP.sil[sec] = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })));
+  }
+  function lpBuild() {
+    const sc = S.set.lpScope || 'all'; let its = lItems().filter(it => LKEYS.has(it.f));
+    if (sc.startsWith('set:')) its = its.filter(it => it.set === sc.slice(4));
+    if (sc.startsWith('type:')) its = its.filter(it => it.type === +sc.slice(5));
+    if (S.set.lpOrder === 'rand') its = shuffle(its);
+    const key = sc + '|' + (S.set.lpOrder || 'seq');
+    if (LP.key !== key) { LP.key = key; LP.list = its; LP.i = (S.lpPos && S.lpPos[key]) || 0; if (LP.i >= its.length) LP.i = 0; }
+  }
+  function lpSave() { S.lpPos = S.lpPos || {}; S.lpPos[LP.key] = LP.i; save(); }
+  function lpShow() {
+    const it = LP.list[LP.i]; const set = it && LPACK.sets.find(s => s.id === it.set);
+    const t = $('#lp-title'), q = $('#lp-q'), st = $('#lp-state'), btn = $('#lp-toggle'), cnt = $('#lp-count');
+    if (!t) return;
+    t.textContent = it ? `${set ? set.name : ''} · 문제${it.type} ${it.no}번` : '';
+    q.textContent = it && S.set.lpQ ? it.q : '';
+    cnt.textContent = `${LP.list.length ? LP.i + 1 : 0} / ${LP.list.length}`;
+    st.textContent = !LP.on ? '멈춤' : LP.gap ? `다음 문제까지 ${S.set.lpGap || 5}초…` : '재생 중';
+    btn.textContent = LP.on ? '❚❚ 멈춤' : '▶ 재생';
+    const bar = $('#lp-bar'); if (bar) bar.style.width = (LP.list.length ? (LP.i + 1) / LP.list.length * 100 : 0) + '%';
+    if ('mediaSession' in navigator && it) { try { navigator.mediaSession.metadata = new MediaMetadata({ title: `문제${it.type} ${it.no}번 · ${set ? set.name : ''}`, artist: 'JLPT N4 청해 연속 듣기' }); } catch (e) { } }
+  }
+  async function lpLoad(play) {
+    const a = $('#lpa'); const it = LP.list[LP.i]; if (!a || !it) return;
+    LP.gap = false;
+    try { const b = await LDB.get(it.f); if (LP.url) URL.revokeObjectURL(LP.url); LP.url = URL.createObjectURL(b); a.src = LP.url; a.playbackRate = S.set.lrate || 1; } catch (e) { toast('음원을 열지 못했습니다'); return; }
+    lpShow();
+    if (play) a.play().catch(() => { LP.on = false; lpShow(); });
+  }
+  function lpEnded() {
+    const a = $('#lpa'); if (!a || !LP.on) return;
+    if (!LP.gap) { // 문제가 끝남 → 무음 간격
+      lMarkHeard(LP.list[LP.i]);
+      if (LP.i >= LP.list.length - 1) { LP.on = false; LP.i = 0; lpSave(); lpShow(); toast('모든 문제를 다 들었습니다'); return; }
+      LP.gap = true; a.src = silenceUrl(S.set.lpGap || 5); a.playbackRate = 1; a.play().catch(() => { }); lpShow(); return;
+    }
+    LP.i++; lpSave(); lpLoad(true);
+  }
+  function lMarkHeard(it) { S.lheard = S.lheard || {}; S.lheard[it.id] = (S.lheard[it.id] || 0) + 1; logToday(); save(); }
+  function lpGo(d) { LP.i = Math.max(0, Math.min(LP.list.length - 1, LP.i + d)); lpSave(); lpLoad(LP.on); }
+  function lpToggle() {
+    const a = $('#lpa'); if (!a) return;
+    if (LP.on) { LP.on = false; a.pause(); lpShow(); return; }
+    LP.on = true; if (!a.src || LP.gap) lpLoad(true); else a.play().catch(() => { LP.on = false; lpShow(); });
+    lpShow();
+  }
+  VIEWS.lplay = (vw) => {
+    if (!LPACK) return VIEWS.listen(vw);
+    lpBuild(); LP.on = false; LP.gap = false;
+    vw.after = () => {
+      const a = $('#lpa'); a.addEventListener('ended', lpEnded);
+      if ('mediaSession' in navigator) { try {
+        navigator.mediaSession.setActionHandler('play', () => { if (!LP.on) lpToggle(); });
+        navigator.mediaSession.setActionHandler('pause', () => { if (LP.on) lpToggle(); });
+        navigator.mediaSession.setActionHandler('nexttrack', () => lpGo(1));
+        navigator.mediaSession.setActionHandler('previoustrack', () => lpGo(-1));
+      } catch (e) { } }
+      lpLoad(false);
+    };
+    const sc = S.set.lpScope || 'all';
+    const opts = [['all', `전체 ${lItems().length}문제`], ...LPACK.sets.map(s => ['set:' + s.id, s.name]), ...[1, 2, 3, 4].map(t => ['type:' + t, `문제${t} ${LTYPE[t][0]}만`])];
+    return top('청해 연속 듣기', '자동 재생', true) + `
+    <div class="sec"><div class="panel lp">
+      <div class="small muted" id="lp-count"></div>
+      <div class="bar" style="margin:8px 0 14px"><i id="lp-bar" class="bg-st3" style="width:0"></i></div>
+      <b id="lp-title" class="lp-title"></b>
+      <div id="lp-q" class="jp small muted" style="min-height:1.4em;margin-top:4px"></div>
+      <div id="lp-state" class="small" style="margin-top:8px;color:var(--ai)">멈춤</div>
+      <audio id="lpa" preload="auto"></audio>
+      <div class="lp-ctl">
+        <button class="btn" data-act="lpprev" aria-label="이전 문제">⏮</button>
+        <button class="btn pri" id="lp-toggle" data-act="lptoggle">▶ 재생</button>
+        <button class="btn" data-act="lpnext" aria-label="다음 문제">⏭</button>
+      </div>
+    </div></div>
+    <div class="sec"><div class="panel">
+      <div class="set-row stack"><label for="lp-scope">들을 범위</label><select id="lp-scope">${opts.map(([k, n]) => `<option value="${k}" ${sc === k ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+      <div class="set-row"><span>순서</span><span class="lspeed" style="margin:0">${[['seq', '차례대로'], ['rand', '섞어서']].map(([k, n]) => `<button class="${(S.set.lpOrder || 'seq') === k ? 'on' : ''}" data-lporder="${k}">${n}</button>`).join('')}</span></div>
+      <div class="set-row"><span>문제 사이 간격</span><span class="lspeed" style="margin:0">${[3, 5, 10].map(g => `<button class="${(S.set.lpGap || 5) === g ? 'on' : ''}" data-lpgap="${g}">${g}초</button>`).join('')}</span></div>
+      <div class="set-row"><span>재생 속도</span><span class="lspeed" style="margin:0">${[0.8, 1, 1.2].map(r => `<button class="${(S.set.lrate || 1) === r ? 'on' : ''}" data-lrate="${r}">${r}×</button>`).join('')}</span></div>
+      <div class="set-row"><label for="lp-qchk">질문 문장 보기<span class="d">재생 중인 문제의 질문을 화면에 표시</span></label><input id="lp-qchk" class="toggle" type="checkbox" ${S.set.lpQ ? 'checked' : ''}></div>
+      <p class="small muted" style="margin:8px 0 0">화면이 꺼져도 계속 재생됩니다. 잠금 화면의 ⏮ ⏭ 버튼으로 문제를 넘길 수 있어요. 다른 화면으로 나가면 멈춥니다.</p>
     </div></div>`;
   };
   function lMark(it, ok) { S.listen = S.listen || {}; S.listen[it.id] = { ok, at: Date.now() }; logToday(); save(); }
@@ -1040,7 +1135,9 @@
     if (d.chap) return go({ v: 'chapter', n: +d.chap });
     if (d.theme != null) return go({ v: 'theme', i: +d.theme });
     if (d.li != null) { const i = +d.li; if (i < 0 || i >= lItems().length) return; if (d.rep) { stack.pop(); } return go({ v: 'litem', i }); }
-    if (d.lrate) { S.set.lrate = +d.lrate; save(); const a = $('#lau'); if (a) a.playbackRate = +d.lrate; document.querySelectorAll('[data-lrate]').forEach(b => b.classList.toggle('on', b.dataset.lrate === d.lrate)); return; }
+    if (d.lporder) { S.set.lpOrder = d.lporder; save(); document.querySelectorAll('[data-lporder]').forEach(b => b.classList.toggle('on', b.dataset.lporder === d.lporder)); const a = $('#lpa'); if (a) a.pause(); LP.on = false; LP.key = ''; lpBuild(); lpLoad(false); return; }
+    if (d.lpgap) { S.set.lpGap = +d.lpgap; save(); document.querySelectorAll('[data-lpgap]').forEach(b => b.classList.toggle('on', b.dataset.lpgap === d.lpgap)); lpShow(); return; }
+    if (d.lrate) { S.set.lrate = +d.lrate; save(); const lpa = $('#lpa'); if (lpa && !LP.gap) lpa.playbackRate = +d.lrate; const a = $('#lau'); if (a) a.playbackRate = +d.lrate; document.querySelectorAll('[data-lrate]').forEach(b => b.classList.toggle('on', b.dataset.lrate === d.lrate)); return; }
     if (d.lseek != null) { const a = $('#lau'); if (a) { a.currentTime = Math.max(0, +d.lseek - 0.3); a.play(); } return; }
     if (d.lpick) { const vw = cur(); const it = lItems()[vw.i]; vw.pick = +d.lpick; vw.shown = true; lMark(it, it.ans ? vw.pick === it.ans : null); return render(); }
     if (d.lself != null) { const it = lItems()[cur().i]; lMark(it, d.lself === '1'); return render(); }
@@ -1052,6 +1149,10 @@
       case 'back': return back();
       case 'settings': return go({ v: 'settings' });
       case 'listen': return go({ v: 'listen' });
+      case 'lplay': return go({ v: 'lplay' });
+      case 'lptoggle': return lpToggle();
+      case 'lpprev': return lpGo(-1);
+      case 'lpnext': return lpGo(1);
       case 'lnext': { const i = lItems().findIndex(it => !lDone(it)); if (i >= 0) go({ v: 'litem', i }); return; }
       case 'lrand': { const its = lItems(); const pool = its.map((_, i) => i).filter(i => !lDone(its[i])); const arr = pool.length ? pool : its.map((_, i) => i); return go({ v: 'litem', i: arr[Math.floor(Math.random() * arr.length)] }); }
       case 'lshow': { const vw = cur(); vw.shown = true; const it = lItems()[vw.i]; if (!it.ans && !lDone(it)) { /* 자기 채점 대기 */ } else if (!lDone(it)) lMark(it, null); return render(); }
@@ -1094,6 +1195,8 @@
   });
   document.addEventListener('change', e => {
     if (e.target.id === 'limp' || e.target.id === 'limpd') { importFiles(e.target.files); return; }
+    if (e.target.id === 'lp-scope') { S.set.lpScope = e.target.value; save(); const a = $('#lpa'); if (a) a.pause(); LP.on = false; LP.key = ''; lpBuild(); lpLoad(false); return; }
+    if (e.target.id === 'lp-qchk') { S.set.lpQ = e.target.checked; save(); lpShow(); return; }
     const t = e.target; const m = { 's-mode': 'mode', 's-voice': 'voice', 's-auto': 'auto', 's-furi': 'furi', 's-timer': 'timer', 's-daily': 'daily', 's-exam': 'exam', 's-theme': 'theme' }[t.id];
     if (!m) return;
     S.set[m] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? Math.max(0, Math.min(50, +t.value || 0)) : t.value;
