@@ -223,6 +223,8 @@
     return `<nav class="tabs" aria-label="메뉴"><div class="in">${T.map(([k, c, n]) => `<button class="${tab === k ? 'on' : ''}" data-tab="${k}"><b>${c}</b>${n}${k === 'wrong' && wc ? `<span class="badge">${wc > 99 ? '99+' : wc}</span>` : ''}</button>`).join('')}</div></nav>`;
   }
   function render() {
+    if (typeof buildPlan === 'function') buildPlan(); // 백업 불러오기 등으로 코스 종류가 바뀌었으면 다시 짠다
+    if (typeof shStop === 'function') shStop(true);
     const v = cur() || { v: tab };
     const fn = VIEWS[v.v] || VIEWS.home;
     if (focusId) { clearInterval(focusId); focusId = null; }
@@ -404,7 +406,7 @@
   function startQuiz(title, qs, opts = {}) {
     const plan = pendingPlan; pendingPlan = null;
     if (!qs.length) { toast('문제를 만들 수 없습니다'); return; }
-    const ses = { kind: 'quiz', title, qs, i: 0, picked: null, score: 0, wrongIdx: [], setId: opts.setId, src: opts.src, plan };
+    const ses = { kind: 'quiz', title, qs, i: 0, picked: null, score: 0, wrongIdx: [], setId: opts.setId, src: opts.src, plan, exam: opts.exam || 0, t0: Date.now(), tstat: {} };
     go({ v: 'quiz', session: ses }); session = ses;
   }
   function stopTimer() { if (timerId) { clearInterval(timerId); timerId = null; } }
@@ -415,12 +417,29 @@
       if (ses.setId != null) { S.best[ses.setId] = Math.max(S.best[ses.setId] || 0, pct); save(); }
       else if (ses.ps) { Object.entries(ses.ps).forEach(([id, [n, c]]) => { if (PMAP[id] && n >= PMAP[id].qs.length) S.best[id] = Math.max(S.best[id] || 0, Math.round(c / n * 100)); }); save(); }
       planDone(ses);
-      return top(ses.title, '결과', true) + `<div class="result">${pct >= 80 ? '<div class="stamp">合格</div>' : ''}<div class="pct">${pct}%</div><p class="muted">${ses.qs.length}문제 중 ${ses.score}문제 정답</p></div>
+      if (ses.exam && !ses.t1) ses.t1 = Date.now();
+      const used = ses.exam ? Math.min(ses.exam, Math.round((ses.t1 - ses.t0) / 1000)) : 0;
+      const examBox = ses.exam ? `<div class="sec"><div class="panel"><div class="row"><b class="grow">유형별 정답률</b><span class="small muted">걸린 시간 ${Math.floor(used / 60)}분 ${used % 60}초 / 25분${ses.timeup ? ' · 시간 초과' : ''}</span></div>
+        <div class="weak">${Object.keys(EXAM_N).map(t => { const [n, c] = ses.tstat[t] || [0, 0]; const tot = ses.qs.filter(q => q.ptype === t).length; return `<div class="wk"><span>${TYPE_NAME[t]}</span><div class="bar"><i class="${c / tot >= 0.8 ? 'bg-st3' : c / tot >= 0.5 ? 'bg-st2' : 'bg-st1'}" style="width:${c / tot * 100}%"></i></div><b>${c}/${tot}</b></div>`; }).join('')}</div>
+        <p class="small muted" style="margin:8px 0 0">실제 시험은 대략 60% 안팎이 합격선입니다(언어지식·독해 합산, 과목별 최저점 있음). 정답률이 낮은 유형은 「유형 랜덤 20」으로 보충하세요.</p></div></div>` : '';
+      return top(ses.title, '결과', true) + `<div class="result">${pct >= 80 ? '<div class="stamp">合格</div>' : ''}<div class="pct">${pct}%</div><p class="muted">${ses.qs.length}문제 중 ${ses.score}문제 정답</p></div>${examBox}
       <div class="list"><button class="btn pri block" data-act="requiz">같은 문제 다시 풀기</button>${ses.wrongIdx.length ? `<button class="btn ng block" data-act="rewrong">틀린 ${ses.wrongIdx.length}문제만 다시</button>` : ''}<button class="btn block" data-act="back">${ses.plan ? '챕터로 돌아가기' : '목록으로'}</button></div>
       ${ses.wrongIdx.length ? `<div class="sec"><div class="sec-h"><h2>틀린 문제 다시 보기</h2></div><div class="list">${ses.wrongIdx.map(i => { const q = ses.qs[i]; return `<div class="panel small"><div class="row" style="align-items:flex-start"><div class="jp grow" style="font-size:16px">${q.review || q.prompt}</div>${q.sayAfter ? spkBtn(q.sayAfter) : ''}</div><div style="color:var(--ok);margin-top:4px">정답: ${esc(q.opts[q.ans].t)}</div></div>`; }).join('')}</div></div>` : ''}`;
     }
     const q = ses.qs[ses.i]; const answered = ses.picked != null;
     const okPick = answered && ses.picked === q.ans;
+    if (ses.exam) {
+      const left = () => Math.max(0, ses.exam - Math.floor((Date.now() - ses.t0) / 1000));
+      const fmt = x => Math.floor(x / 60) + ':' + String(x % 60).padStart(2, '0');
+      vw.after = () => { timerId = setInterval(() => { const l = left(); const e = $('#exam-t'); if (e) { e.textContent = fmt(l); e.classList.toggle('low', l <= 180); } if (l <= 0) { stopTimer(); ses.timeup = true; for (let k = ses.i; k < ses.qs.length; k++) ses.wrongIdx.push(k); ses.i = ses.qs.length; render(); } }, 1000); };
+      return top(ses.title, `${ses.i + 1}/${ses.qs.length}`, true) + `
+      <div class="study-top"><span class="exam-t ${left() <= 180 ? 'low' : ''}" id="exam-t">${fmt(left())}</span><div class="bar"><i class="bg-st3" style="width:${ses.i / ses.qs.length * 100}%"></i></div></div>
+      ${q.ins ? `<div class="q-ins">${q.ins}</div>` : '<div style="height:14px"></div>'}
+      <div class="q-box">${q.prompt}</div>
+      <div class="opts ${q.two ? 'two' : ''}">${q.opts.map((o, i) => `<button class="opt" data-pick="${i}"><span class="n">${i + 1}</span><span class="t ${q.optClass || ''}">${esc(o.t)}</span></button>`).join('')}</div>
+      <div class="sec"><button class="btn block" data-pick="-1">모르겠음 · 건너뛰기</button></div>
+      <p class="small muted" style="text-align:center">실전처럼 정답은 끝난 뒤에 한꺼번에 보여 줍니다.</p>`;
+    }
     if (!answered && S.set.timer) vw.after = () => { let t = q.time || 20; const bar = $('.timer i'); timerId = setInterval(() => { t--; if (bar) bar.style.width = (t / (q.time || 20) * 100) + '%'; if (t <= 0) { stopTimer(); answer(-1); } }, 1000); };
     else vw.after = () => { if (answered && S.set.auto && q.sayAfter && ses.spoke !== ses.i) { ses.spoke = ses.i; TTS.say(q.sayAfter); } };
     const optCls = q.optClass || '';
@@ -446,6 +465,8 @@
     if (q.wid && q.wid.startsWith('p:')) S.seen[q.wid] = Date.now();
     if (q.pset != null) { ses.ps = ses.ps || {}; const x = ses.ps[q.pset] = ses.ps[q.pset] || [0, 0]; x[0]++; if (ok) x[1]++; }
     if (q.srsId) { const s = srs(q.srsId); if (!s && ok) S.srs[q.srsId] = { b: 2, due: Date.now() + DAY, n: 1 }; }
+    if (q.ptype) { const x = ses.tstat[q.ptype] = ses.tstat[q.ptype] || [0, 0]; x[0]++; if (ok) x[1]++; }
+    if (ses.exam) { ses.i++; ses.picked = null; logToday(); save(); render(); window.scrollTo(0, 0); return; } // 시험 모드: 정답 표시 없이 바로 다음
     logToday(); save(); render();
   }
 
@@ -518,7 +539,7 @@
       if (type === 'write') optClass = 'kj';
     }
     const opts = q.o.map((o, i) => ({ t: o[0], note: o[1], say: q.os ? q.os[i] : null }));
-    return shuffleOpts({ ins: TYPE_INS[type], prompt, opts, ans: q.a, two: two && opts.every(o => o.t.length <= 7), optClass, sayBefore, sayAfter, wid: 'p:' + p.id + '-' + qi, pset: p.id, explain: q.t ? `<div class="tr">${esc(q.t)}</div>` : '', review: type === 'use' ? esc(q.s) : ruby(q.s, type === 'ctx' ? null : q.u) });
+    return shuffleOpts({ ptype: type, ins: TYPE_INS[type], prompt, opts, ans: q.a, two: two && opts.every(o => o.t.length <= 7), optClass, sayBefore, sayAfter, wid: 'p:' + p.id + '-' + qi, pset: p.id, explain: q.t ? `<div class="tr">${esc(q.t)}</div>` : '', review: type === 'use' ? esc(q.s) : ruby(q.s, type === 'ctx' ? null : q.u) });
   }
   function startSet(p) { startQuiz(p.title, shuffle(p.qs.map((_, i) => probQ(p, i))), { setId: p.id }); }
 
@@ -597,6 +618,8 @@
     <div class="sec"><div class="btn-grid">
       <button class="btn pri" data-act="mock"><span>실전 모의 25문항</span><small style="color:inherit;opacity:.8">5유형 섞어서 · 타이머 ${S.set.timer ? '켜짐' : '꺼짐'}</small></button>
       <button class="btn" data-act="pwrong"><span>틀린 기출만</span><small>${Object.keys(S.wrong).filter(k => k.startsWith('p:')).length}문항</small></button>
+      <button class="btn" data-act="exam"><span>실전 시간 모의</span><small>28문항 · 25분 · 유형별 정답률</small></button>
+      <button class="btn" data-act="weak"><span>약점 집중 10</span><small>자주 틀린 것만 · 약 4분</small></button>
     </div></div>
     ${groups.map(([t, Ls]) => {
       const sets = N.PROBS.filter(p => Ls.includes(p.L));
@@ -622,6 +645,13 @@
     if (!keys.length) return top('오답노트', '', false) + '<div class="empty"><div class="stamp">済</div><p>틀린 항목이 없습니다.<br>문제를 풀거나 카드에서 「모름」을 누르면 여기에 모입니다.</p></div>';
     return top('오답노트', `${keys.length}개`, false) + `
     <p class="small muted" style="margin-top:14px">맞히면 횟수가 줄고, 카드에서 「앎」으로 충분히 외우면 자동으로 빠집니다.</p>
+    ${(() => { const w = weakStats(); const mx = Math.max(1, ...Object.values(w.t)); const worst = Object.entries(w.t).sort((a, b) => b[1] - a[1])[0];
+      return `<div class="sec"><div class="panel">
+        <div class="row"><b class="grow">내 약점</b>${worst && worst[1] ? `<span class="small muted">가장 약한 유형: <b>${TYPE_NAME[worst[0]]}</b></span>` : ''}</div>
+        <div class="weak">${Object.entries(w.t).map(([t, c]) => `<div class="wk"><span>${TYPE_NAME[t]}</span><div class="bar"><i class="bg-st1" style="width:${c / mx * 100}%"></i></div><b>${c}</b></div>`).join('')}</div>
+        <button class="btn pri block" style="margin-top:12px" data-act="weak">약점 집중 10문항 <small style="opacity:.8">· 약 4분</small></button>
+        <p class="small muted" style="margin:8px 0 0">많이 틀린 문제와 가장 약한 유형을 앞세워 냅니다. 맞히면 오답노트에서 빠집니다.</p>
+      </div></div>`; })()}
     <div class="sec"><div class="btn-grid">
       <button class="btn pri" data-act="wcards" ${ks.length + vs.length + ss.length + bs.length ? '' : 'disabled'}><span>오답 카드 복습</span><small style="color:inherit;opacity:.8">한자 ${ks.length} · 어휘 ${vs.length + ss.length} · 동사 ${bs.length}</small></button>
       <button class="btn" data-act="pwrong" ${ps.length ? '' : 'disabled'}><span>틀린 문제 다시 풀기</span><small>${ps.length}문항</small></button>
@@ -633,6 +663,35 @@
     ${ps.length ? `<div class="sec"><div class="sec-h"><h2>기출 문제 ${ps.length}</h2></div><div class="list">${ps.slice(0, 40).map(({ p, qi }) => { const q = p.qs[qi]; return `<div class="panel"><div class="small muted"><span class="tag ${p.type}">${TYPE_NAME[p.type]}</span> ${esc(p.title)} · ${qi + 1}번</div><div class="q-sent" style="font-size:16px;line-height:2">${p.type === 'use' ? esc(q.s) : ruby(q.s, p.type === 'ctx' ? null : q.u)}</div><div class="row"><span class="grow" style="color:var(--ok);font-weight:700">정답: ${esc(q.o[q.a][0])}</span>${q.sa ? spkBtn(q.sa) : ''}</div></div>`; }).join('')}</div></div>` : ''}
     <div class="sec"><button class="btn block" data-act="clearwrong">오답노트 비우기</button></div>`;
   };
+  function weakStats() {
+    const t = { read: 0, write: 0, ctx: 0, syn: 0, use: 0 }; let k = 0, v = 0;
+    Object.keys(S.wrong).forEach(key => { if (key.startsWith('p:')) { const p = PMAP[+key.slice(2).split('-')[0]]; if (p && t[p.type] != null) t[p.type]++; } else if (key.startsWith('k:')) k++; else v++; });
+    return { t, k, v };
+  }
+  // 많이 틀린 것 + 가장 약한 유형을 앞세워 n문항
+  function weakQuiz(n) {
+    const st = weakStats().t; const maxT = Math.max(1, ...Object.values(st));
+    const score = k => { let x = S.wrong[k] * 2 + Math.random() * 1.5; if (k.startsWith('p:')) { const p = PMAP[+k.slice(2).split('-')[0]]; if (p && st[p.type] != null) x += st[p.type] / maxT * 2; } return x; };
+    const qs = []; let nk = 0;
+    for (const k of Object.keys(S.wrong).sort((a, b) => score(b) - score(a))) {
+      if (qs.length >= n) break; let q = null;
+      if (k.startsWith('p:')) { const [id, qi] = k.slice(2).split('-').map(Number); if (PMAP[id] && PMAP[id].qs[qi]) q = probQ(PMAP[id], qi); }
+      else if (nk >= Math.ceil(n * 0.4)) continue; // 한자·어휘는 40%까지만
+      else if (k.startsWith('k:')) { const kk = KMAP[k.slice(2)]; if (kk) q = qKanjiHun(kk, N.KANJI); }
+      else if (VMAP[k] && hasK(VMAP[k].w) && VMAP[k].w !== VMAP[k].r && VMAP[k].r.length >= 2) q = qWordRead(VMAP[k]);
+      else if (VBMAP[k]) q = qVerbMean(VBMAP[k], N.VERBS, false);
+      if (q) { qs.push(q); if (!k.startsWith('p:')) nk++; }
+    }
+    if (!qs.length) return false;
+    startQuiz('약점 집중', shuffle(qs)); return true;
+  }
+  // 실제 시험(문자·어휘)과 같은 구성: 한자읽기 7 · 표기 5 · 문맥규정 8 · 유의표현 4 · 용법 4 = 28문항, 25분
+  const EXAM_N = { read: 7, write: 5, ctx: 8, syn: 4, use: 4 };
+  function examMock() {
+    const qs = [];
+    Object.entries(EXAM_N).forEach(([t, n]) => pickFresh(N.PROBS.filter(p => p.type === t).flatMap(p => p.qs.map((_, i) => probQ(p, i))), n).forEach(q => qs.push(q)));
+    startQuiz('실전 시간 모의', qs, { exam: 25 * 60 });
+  }
   function wrongProbQuiz() {
     const ps = Object.keys(S.wrong).filter(k => k.startsWith('p:')).map(k => { const [id, qi] = k.slice(2).split('-').map(Number); return PMAP[id] ? probQ(PMAP[id], qi) : null; }).filter(Boolean);
     startQuiz('틀린 기출 다시', shuffle(ps).slice(0, 30));
@@ -692,13 +751,19 @@
      1~26회: 복습 → 새 한자 → 훈음 확인 → 어휘 → 기출 (약 55분)
      27~30회: 실전 모의 + 유형 집중 + 오답 정리
      교재 순서대로 한자 686자 · 어휘 1,415개 · 기출 1,089문항을 26회에 고르게 나눈다. */
-  const PLAN_N = 30, LEARN_N = 26;
+  let PLAN_N = 30, PLAN = null, planKey = '', planMk = null;
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
-  const PLAN = (() => {
+  // 시험 직전 코스의 회차 수: 오늘부터 시험 전날까지, 여유 2일을 남긴다
+  const examN = () => Math.max(6, Math.min(24, ddays() - 2));
+  function buildPlan() {
+    const exam = S.plan.kind === 'exam';
+    const total = exam ? Math.max(6, S.plan.n || 20) : 30;
+    const key = (exam ? 'exam' : 'full') + total; if (planKey === key && PLAN) return; planKey = key;
+    const FIN = exam ? (total >= 12 ? 3 : 2) : 4; const LEARN_N = total - FIN;
     const chunk = (arr, n) => Array.from({ length: n }, (_, i) => arr.slice(Math.round(arr.length * i / n), Math.round(arr.length * (i + 1) / n)));
     const lvIdx = {}; const lvCnt = {}; N.KANJI.forEach(k => { lvCnt[k.lv] = (lvCnt[k.lv] || 0) + 1; lvIdx[k.k] = lvCnt[k.lv]; });
     const LVN = { N5: 'N5', N4: 'N4', 기출: '기출 N3', 교재: '교재' };
-    const kan = chunk(N.KANJI, LEARN_N);
+    const kan = chunk(exam ? N.KANJI.filter(k => k.lv !== '교재') : N.KANJI, LEARN_N);
     const seen = new Set(), vlist = [];
     for (let L = 1; L <= 15; L++) lessonIds(L).forEach(id => { if (!seen.has(id)) { seen.add(id); vlist.push({ id, L }); } });
     const voc = chunk(vlist, LEARN_N);
@@ -712,6 +777,21 @@
       const parts = []; ks.forEach(k => { const last = parts[parts.length - 1]; if (last && last.lv === k.lv) last.b = lvIdx[k.k]; else parts.push({ lv: k.lv, a: lvIdx[k.k], b: lvIdx[k.k] }); });
       const kLabel = parts.map(x => `${LVN[x.lv]} ${x.a}~${x.b}`).join(' · ');
       const qn = bins[i].reduce((s, id) => s + PMAP[id].qs.length, 0);
+      if (exam) {
+        sessions.push({
+          phase: '핵심 학습', title: `한자 ${ks[0].k}~${ks[ks.length - 1].k} · 어휘 ${lrange(voc[i].map(x => x.L))}`,
+          steps: [
+            { k: 'rev', name: '복습', desc: '기억이 흐려질 때가 된 한자·어휘 (최대 40장)' },
+            { k: 'weak', name: '약점 집중', desc: '자주 틀린 문제·한자 10문항', min: 4 },
+            { k: 'kc', name: '시험 범위 한자', desc: `${kLabel} · ${ks.length}자`, ids: ks.map(k => k.k), min: Math.round(ks.length * 0.45) },
+            { k: 'kq', name: '훈음 확인', desc: '방금 본 한자 10문항', ids: ks.map(k => k.k), min: 3 },
+            { k: 'vcx', name: '어휘 훑기', desc: `${lrange(voc[i].map(x => x.L))} 단어 ${voc[i].length}개 중 아직 못 외운 것만`, ids: voc[i].map(x => x.id), min: Math.round(voc[i].length * 0.2) },
+            { k: 'pq', name: '기출 문제', desc: `${lrange(bins[i].map(id => PMAP[id].L))} 확인문제 ${bins[i].length}세트 · ${qn}문항`, sets: bins[i], min: Math.round(qn * 0.4) },
+            { k: 'listen', opt: true, name: '청해 (선택)', desc: '이동 중 연속 듣기나 따라 말하기로 대신해도 됩니다', min: 0 },
+          ],
+        });
+        continue;
+      }
       sessions.push({
         phase: ks.every(k => k.lv !== '교재') ? '기초 한자' : '교재 한자', title: `한자 ${ks[0].k}~${ks[ks.length - 1].k} · 어휘 ${lrange(voc[i].map(x => x.L))}`,
         steps: [
@@ -726,14 +806,34 @@
     const R = { k: 'rev', name: '복습', desc: '기억이 흐려질 때가 된 한자·어휘 (최대 40장)' };
     const M = { k: 'mock', name: '실전 모의 25', desc: '5유형 섞어서 · 실제 시험처럼', min: 15 };
     const T = t => ({ k: 'ptype', type: t, name: `${TYPE_NAME[t]} 집중 20`, desc: '전체 기출에서 무작위', min: 9 });
+    const E = { k: 'exam', name: '실전 시간 모의', desc: '28문항 · 25분 · 풀이 중 정답 표시 없음', min: 25 };
+    const W = { k: 'weak', name: '약점 집중', desc: '자주 틀린 문제·한자 10문항', min: 4 };
+    if (exam) {
+      const fin = [
+        { phase: '실전 마무리', title: '실전 모의 1 · 약점 점검', steps: [R, E, W, { k: 'wcards', name: '오답 카드', desc: '틀렸던 한자·어휘·동사', min: 10 }] },
+        { phase: '실전 마무리', title: '실전 모의 2 · 표기·동사', steps: [R, E, { k: 'pwrong', name: '틀린 기출 다시', desc: '최대 30문항', min: 12 }, { k: 'cquiz', name: '닮은 한자 구별 20', desc: '표기 문제 함정 대비', min: 8 }, { k: 'vbc', name: '동사 활용 15', desc: 'て형·ない형·가능형', min: 6 }] },
+        { phase: '실전 마무리', title: '실전 모의 3 · 마지막 점검', steps: [R, E, W, { k: 'wcards', name: '오답 카드', desc: '시험 전 마지막으로 가볍게', min: 8 }] },
+      ];
+      sessions.push(...fin.slice(3 - FIN));
+      PLAN = { sessions, exam: true, name: `시험 직전 ${sessions.length}회 코스` }; PLAN_N = sessions.length; return;
+    }
     sessions.push(
       { phase: '실전 마무리', title: '모의고사 1 · 한자읽기', steps: [R, M, T('read'), { k: 'wcards', name: '오답 카드', desc: '틀렸던 한자·어휘', min: 10 }] },
       { phase: '실전 마무리', title: '모의고사 2 · 한자표기', steps: [R, M, T('write'), { k: 'cquiz', name: '닮은 한자 구별 20', desc: '표기 문제 함정 대비', min: 8 }, { k: 'pwrong', name: '틀린 기출 다시', desc: '최대 30문항', min: 12 }] },
       { phase: '실전 마무리', title: '모의고사 3 · 문맥·유의', steps: [R, M, T('ctx'), T('syn')] },
       { phase: '실전 마무리', title: '모의고사 4 · 용법 · 총정리', steps: [R, M, T('use'), { k: 'pwrong', name: '틀린 기출 다시', desc: '최대 30문항', min: 12 }, { k: 'wcards', name: '오답 카드', desc: '마지막 점검', min: 8 }] },
     );
-    return { sessions };
-  })();
+    PLAN = { sessions, exam: false, name: '30회 완주 코스' }; PLAN_N = sessions.length;
+  }
+  buildPlan();
+  let courseNotice = '';
+  function resetCourse(kind) {
+    S.plan = Object.assign({}, S.plan, { kind, n: kind === 'exam' ? examN() : 30, steps: {}, fin: {}, focus: null });
+    if (kind === 'exam') S.plan.days = [0, 1, 2, 3, 4, 5, 6];
+    planKey = ''; buildPlan(); save();
+  }
+  // v4.5: 시험이 30일 안으로 다가왔으면 한 번만, 남은 기간에 맞춘 코스로 1회차부터 다시 짠다 (외운 기록은 그대로)
+  if (!S.examCourse1) { S.examCourse1 = true; if (S.plan.kind !== 'exam' && ddays() > 7 && ddays() <= 30) { resetCourse('exam'); courseNotice = `시험까지 ${ddays()}일 — 「${PLAN.name}」로 새로 짰습니다. 1회차부터 시작하세요.`; } else save(); }
   const fmtD = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   const mdLabel = s => { const d = new Date(s + 'T00:00:00'); return `${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})`; };
   const validId = id => id.startsWith('k:') ? !!KMAP[id.slice(2)] : !!(VMAP[id] || SMAP[id] || VBMAP[id]);
@@ -764,11 +864,11 @@
   }
   function markStep(n, si, manual) {
     S.plan.steps[n + '-' + si] = 1; logToday();
-    const all = PLAN.sessions[n - 1].steps.every((_, i) => stepDone(n, i));
+    const all = PLAN.sessions[n - 1].steps.every((x, i) => x.opt || stepDone(n, i));
     if (all && !S.plan.fin[n]) finishChapter(n); else if (manual) toast('완료로 표시했습니다');
     save(); if (manual) render();
   }
-  function finishChapter(n) { S.plan.fin[n] = todayStr(); if (S.plan.focus && S.plan.focus.n === n) S.plan.focus = null; save(); toast(n === PLAN_N ? '30회 코스를 모두 마쳤습니다. 시험 잘 보세요!' : `${n}회차 완료! 수고했습니다`); }
+  function finishChapter(n) { S.plan.fin[n] = todayStr(); if (S.plan.focus && S.plan.focus.n === n) S.plan.focus = null; save(); toast(n === PLAN_N ? '코스를 모두 마쳤습니다. 시험 잘 보세요!' : `${n}회차 완료! 수고했습니다`); }
   function planDone(ses) { if (ses.plan && !ses.planMarked) { ses.planMarked = 1; markStep(ses.plan.n, ses.plan.si, false); } }
   function ptypeQuiz(type) { const all = N.PROBS.filter(p => (type === 'mix' ? p.L === 15 : p.type === type)).flatMap(p => p.qs.map((_, i) => probQ(p, i))); return startQuiz(TYPE_NAME[type] + ' 랜덤', pickFresh(all, 20)); }
   function wrongCards() { return startCards(shuffle(Object.keys(S.wrong).filter(k => (k.startsWith('k:') && KMAP[k.slice(2)]) || VMAP[k] || SMAP[k] || VBMAP[k])), '오답 카드'); }
@@ -783,6 +883,11 @@
       case 'vc': return startCards(shuffle(st.ids), `${n}회차 · 어휘`);
       case 'pq': return startQuiz(`${n}회차 · 기출`, shuffle(st.sets.flatMap(id => PMAP[id].qs.map((_, i) => probQ(PMAP[id], i)))));
       case 'mock': return mockQuiz();
+      case 'exam': return examMock();
+      case 'weak': { if (!weakQuiz(10)) { pendingPlan = null; toast('틀린 기록이 없어 약점 집중을 건너뜁니다'); return markStep(n, si, true); } return; }
+      case 'vcx': { const ids = st.ids.filter(id => stateOf(id) < 3); if (!ids.length) { pendingPlan = null; toast('이 범위 단어는 모두 외웠습니다. 완료로 표시했어요'); return markStep(n, si, true); } return startCards(shuffle(ids), `${n}회차 · 어휘 훑기`); }
+      case 'vbc': { S.set.vbForm = 'all'; return vbQuiz('conj'); }
+      case 'listen': { pendingPlan = null; return go({ v: 'listen' }); }
       case 'ptype': return ptypeQuiz(st.type);
       case 'cquiz': return confuseQuiz();
       case 'wcards': { if (!Object.keys(S.wrong).some(k => k.startsWith('k:') || VMAP[k] || SMAP[k] || VBMAP[k])) { pendingPlan = null; toast('오답 카드가 없습니다. 완료로 표시했어요'); return markStep(n, si, true); } return wrongCards(); }
@@ -792,13 +897,14 @@
   function chapterMin(n) { return PLAN.sessions[n - 1].steps.reduce((s, st) => s + stepMin(st), 0); }
   function homeChapterCard() {
     const n = nextChapter(); const dates = planDates(); const t = todayStr();
-    if (!n) return `<div class="sec"><div class="today"><b>30회 코스 완주!</b><span class="small">이제 오답과 실전 모의로 감각을 유지하세요.</span><button class="btn block" data-tab="plan">일정 보기</button></div></div>`;
-    const st = PLAN.sessions[n - 1]; const doneSteps = st.steps.filter((_, i) => stepDone(n, i)).length;
+    if (!n) return `<div class="sec"><div class="today"><b>${PLAN.name} 완주!</b><span class="small">이제 오답과 실전 모의로 감각을 유지하세요.</span><button class="btn block" data-tab="plan">일정 보기</button></div></div>`;
+    const st = PLAN.sessions[n - 1]; const req = st.steps.filter(x => !x.opt).length; const doneSteps = st.steps.filter((x, i) => !x.opt && stepDone(n, i)).length;
     const doneToday = Object.values(S.plan.fin).includes(t);
-    return `<div class="sec"><div class="today">
+    const note = courseNotice ? `<div class="sec"><div class="panel small" style="border-color:var(--ai)">${esc(courseNotice)} 일정 탭에서 30회 코스로 되돌릴 수 있습니다.</div></div>` : '';
+    return `${note}<div class="sec"><div class="today">
       <div class="row"><b class="grow">${doneToday ? '오늘 챕터 완료 · 다음 회차' : '오늘의 데일리 챕터'}</b><span class="small">연속 ${streak()}일째</span></div>
       <div><div class="chap-no">${n}<small>/ ${PLAN_N}회차</small></div><div class="small" style="opacity:.9">${esc(st.title)}</div></div>
-      <div class="nums"><div class="num"><b>${doneSteps}/${st.steps.length}</b><span>단계</span></div><div class="num"><b>${chapterMin(n)}</b><span>예상 분</span></div><div class="num"><b>${dates[n] === t ? '오늘' : dates[n].slice(5).replace('-', '/').replace(/^0/, '').replace('/0', '/')}</b><span>예정일${dates[n] === t ? '' : ' (' + WD[new Date(dates[n] + 'T00:00:00').getDay()] + ')'}</span></div></div>
+      <div class="nums"><div class="num"><b>${doneSteps}/${req}</b><span>단계</span></div><div class="num"><b>${chapterMin(n)}</b><span>예상 분</span></div><div class="num"><b>${dates[n] === t ? '오늘' : dates[n].slice(5).replace('-', '/').replace(/^0/, '').replace('/0', '/')}</b><span>예정일${dates[n] === t ? '' : ' (' + WD[new Date(dates[n] + 'T00:00:00').getDay()] + ')'}</span></div></div>
       <button class="btn block" data-chap="${n}">${doneSteps ? '이어서 하기' : '챕터 시작'} →</button>
     </div></div>`;
   }
@@ -807,7 +913,9 @@
     const last = dates[PLAN_N]; const exam = S.set.exam;
     const late = last > exam; const left = PLAN_N - fin; const dd = ddays();
     const perWeek = dd > 0 ? Math.ceil(left / (dd / 7)) : left;
-    return top('30회 완주 코스', `${fin}/${PLAN_N}회`, false, `${dd >= 0 ? `<span class="chip-dday">D-${dd}</span>` : ''}`) + `
+    const PH = { '기초 한자': 'N5 · N4 · 기출 한자 321자', '교재 한자': '교재 어휘에 나오는 한자 365자', '핵심 학습': '시험 범위 한자 321자 · 어휘 · 기출 전부', '실전 마무리': PLAN.exam ? '실전 시간 모의 · 약점 · 오답' : '모의고사 4회 · 유형 집중 · 오답' };
+    const mk = planMk;
+    return top(PLAN.name, `${fin}/${PLAN_N}회`, false, `${dd >= 0 ? `<span class="chip-dday">D-${dd}</span>` : ''}`) + `
     <div class="sec"><div class="panel">
       <div class="row"><b class="grow">진도</b><span class="small muted">${fin}회 완료 · 남은 ${left}회</span></div>
       <div class="bar" style="margin-top:8px"><i class="bg-st3" style="width:${fin / PLAN_N * 100}%"></i></div>
@@ -817,14 +925,24 @@
     </div></div>
     <div class="sec"><div class="panel small route">
       <b>하루 루트 (약 1시간)</b>
-      <ol><li><span>복습</span> 간격 반복으로 돌아온 카드 · 10분</li><li><span>새 한자</span> 26자 안팎 카드 암기 · 12분</li><li><span>훈음 확인</span> 방금 본 한자 퀴즈 · 3분</li><li><span>어휘</span> 교재 순서대로 55개 안팎 · 11분</li><li><span>기출</span> 확인문제 40문항 안팎 · 17분</li></ol>
-      <span class="muted">27~30회는 실전 모의고사와 오답 정리로 마무리합니다.</span>
+      ${PLAN.exam ? `<ol><li><span>복습</span> 간격 반복으로 돌아온 카드</li><li><span>약점 집중</span> 자주 틀린 것 10문항</li><li><span>시험 범위 한자</span> 카드 + 훈음 확인</li><li><span>어휘 훑기</span> 아직 못 외운 단어만</li><li><span>기출</span> 확인문제를 빠짐없이 한 번씩</li></ol>
+      <span class="muted">시험 범위 밖인 교재 한자 365자는 뺐습니다. 마지막 ${PLAN.sessions.filter(x => x.phase === '실전 마무리').length}회는 실제 시험 시간(25분)에 맞춘 모의로 마무리합니다.</span>`
+      : `<ol><li><span>복습</span> 간격 반복으로 돌아온 카드 · 10분</li><li><span>새 한자</span> 26자 안팎 카드 암기 · 12분</li><li><span>훈음 확인</span> 방금 본 한자 퀴즈 · 3분</li><li><span>어휘</span> 교재 순서대로 55개 안팎 · 11분</li><li><span>기출</span> 확인문제 40문항 안팎 · 17분</li></ol>
+      <span class="muted">27~30회는 실전 모의고사와 오답 정리로 마무리합니다.</span>`}
     </div></div>
-    ${[['기초 한자', 'N5 · N4 · 기출 한자 321자'], ['교재 한자', '교재 어휘에 나오는 한자 365자'], ['실전 마무리', '모의고사 4회 · 유형 집중 · 오답']].map(([ph, sub]) => `
+    <div class="sec"><div class="panel small">
+      <b>코스 다시 짜기</b>
+      <p class="muted" style="margin:6px 0 10px">지금: ${PLAN.name}. 다시 짜면 <b>회차 체크만 1회차로 돌아가고</b>, 외운 기록(복습 카드·오답·최고 점수)은 그대로 남습니다.</p>
+      <div class="btn-grid">
+        <button class="btn ${mk === 'exam' ? 'ng' : 'pri'}" data-act="mkexam"><span>${mk === 'exam' ? '한 번 더 누르면 새로 짭니다' : '시험 직전 코스'}</span><small style="color:inherit;opacity:.8">오늘부터 매일 · ${examN()}회 · 시험 범위만</small></button>
+        <button class="btn ${mk === 'full' ? 'ng' : ''}" data-act="mkfull"><span>${mk === 'full' ? '한 번 더 누르면 새로 짭니다' : '30회 완주 코스'}</span><small>교재 한자 365자 포함</small></button>
+      </div>
+    </div></div>
+    ${[...new Set(PLAN.sessions.map(x => x.phase))].map(ph => [ph, PH[ph] || '']).map(([ph, sub]) => `
     <div class="sec"><div class="sec-h"><h2>${ph}</h2><span class="more">${sub}</span></div><div class="list">
       ${PLAN.sessions.map((st, i) => [st, i + 1]).filter(([st]) => st.phase === ph).map(([st, n]) => {
-        const done = !!S.plan.fin[n]; const ds = st.steps.filter((_, i) => stepDone(n, i)).length;
-        return `<button class="chap ${done ? 'done' : ''} ${n === n0 ? 'next' : ''}" data-chap="${n}"><span class="no">${done ? '✓' : n}</span><span class="grow"><b>${n}회차</b> <span class="muted small">${done ? '완료 ' : ''}${mdLabel(dates[n])}</span><span class="s">${esc(st.title)}</span></span><span class="p">${done ? '' : ds ? `${ds}/${st.steps.length}` : `${chapterMin(n)}분`}</span></button>`;
+        const done = !!S.plan.fin[n]; const ds = st.steps.filter((x, i) => !x.opt && stepDone(n, i)).length;
+        return `<button class="chap ${done ? 'done' : ''} ${n === n0 ? 'next' : ''}" data-chap="${n}"><span class="no">${done ? '✓' : n}</span><span class="grow"><b>${n}회차</b> <span class="muted small">${done ? '완료 ' : ''}${mdLabel(dates[n])}</span><span class="s">${esc(st.title)}</span></span><span class="p">${done ? '' : ds ? `${ds}/${st.steps.filter(x => !x.opt).length}` : `${chapterMin(n)}분`}</span></button>`;
       }).join('')}
     </div></div>`).join('')}`;
   };
@@ -845,8 +963,8 @@
     <div class="sec"><div class="steps">${st.steps.map((s, i) => { const d = stepDone(n, i); return `
       <div class="step ${d ? 'done' : ''}">
         <button class="chk" data-pchk="${n}" data-si="${i}" aria-label="${d ? '완료 취소' : '완료로 표시'}">${d ? '✓' : i + 1}</button>
-        <div class="grow"><b>${s.name}</b> <span class="muted small">${stepMin(s)}분</span><div class="small muted">${esc(s.k === 'rev' ? revDesc() : s.desc)}</div></div>
-        <button class="btn ${d ? '' : 'pri'}" data-prun="${n}" data-si="${i}">${d ? '다시' : '시작'}</button>
+        <div class="grow"><b>${s.name}</b> <span class="muted small">${s.opt ? '' : stepMin(s) + '분'}</span><div class="small muted">${esc(s.k === 'rev' ? revDesc() : s.desc)}</div></div>
+        <button class="btn ${d || s.opt ? '' : 'pri'}" data-prun="${n}" data-si="${i}">${s.opt ? '열기' : d ? '다시' : '시작'}</button>
       </div>`; }).join('')}</div></div>
     <div class="sec"><button class="btn block ${fin ? '' : 'ok'}" data-act="pfin">${fin ? '완료 취소' : '이 회차 완료로 표시'}</button>
       <p class="small muted" style="margin-top:8px">각 단계를 끝까지 마치면 자동으로 체크됩니다. 모든 단계가 체크되면 회차가 완료됩니다.</p></div>
@@ -988,6 +1106,7 @@
     const nOpt = it.type >= 3 ? 3 : 4;
     vw.after = async () => {
       const a = $('#lau'); if (!a) return;
+      a.addEventListener('timeupdate', shTick); a.addEventListener('ended', shTick);
       try { const b = await LDB.get(it.f); if (!b) { $('#lerr').hidden = false; return; } if (vw.url) URL.revokeObjectURL(vw.url); vw.url = URL.createObjectURL(b); a.src = vw.url; a.playbackRate = S.set.lrate || 1; if (vw.keepT) { a.addEventListener('loadedmetadata', () => { a.currentTime = vw.keepT; vw.keepT = 0; }, { once: true }); } } catch (e) { $('#lerr').hidden = false; }
     };
     return top(st ? st.name : '청해', `문제${it.type} · ${it.no}번`, true) + `
@@ -1012,7 +1131,7 @@
       </div>
       ${IOS ? '<p class="small muted" style="margin:8px 0 0">아이폰은 무음 스위치가 켜져 있으면 해설 음성이 나오지 않습니다.</p>' : ''}
       ${!it.ans && !rec ? `<div class="row" style="margin-top:10px;gap:8px"><span class="small muted grow">맞혔나요?</span><button class="btn" data-lself="1">맞힘</button><button class="btn" data-lself="0">틀림</button></div>` : ''}
-      ${vw.script ? `<div class="lscript">${LPACK.note ? `<p class="small muted" style="margin:0 0 6px">${esc(LPACK.note)}</p>` : ''}${it.script.map(([t, s]) => `<button class="jp" data-lseek="${t}"><span class="muted">${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}</span> ${esc(s)}</button>`).join('')}</div>` : ''}
+      ${vw.script ? `<div class="lscript"><div class="row" style="gap:8px;margin-bottom:8px"><button class="btn pri" id="sh-btn" data-act="shadow">▶ 한 줄씩 따라 말하기</button><span class="small grow" id="sh-state" style="color:var(--ai)"></span></div><p class="small muted" style="margin:0 0 6px">한 줄을 들려주고, 따라 말할 시간만큼 멈췄다가 다음 줄로 넘어갑니다. 줄을 누르면 그 줄부터 시작합니다.</p>${LPACK.note ? `<p class="small muted" style="margin:0 0 6px">${esc(LPACK.note)}</p>` : ''}${it.script.map(([t, s]) => `<button class="jp" data-lseek="${t}"><span class="muted">${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}</span> ${esc(s)}</button>`).join('')}</div>` : ''}
     </div></div>` : ''}
     <div class="sec"><div class="btn-grid">
       <button class="btn" data-li="${vw.i - 1}" data-rep="1" ${vw.i > 0 ? '' : 'disabled'}><span>← 이전</span></button>
@@ -1113,6 +1232,26 @@
       <p class="small muted" style="margin:8px 0 0">화면이 꺼져도 계속 재생됩니다. 잠금 화면의 ⏮ ⏭ 버튼으로 문제를 넘길 수 있어요. 다른 화면으로 나가면 멈춥니다.</p>
     </div></div>`;
   };
+  // 스크립트를 한 줄씩 재생 → 따라 말할 시간만큼 멈춤 → 다음 줄
+  const SH = { on: false, i: 0, end: 0, st: 0, wait: false, timer: null };
+  const shLines = () => { const vw = cur(); const it = vw && vw.v === 'litem' ? lItems()[vw.i] : null; return it ? it.script : []; };
+  // 문제 안내 문장과 번호는 따라 말하지 않는다
+  const shSkip = s => s.length <= 3 || /^問題\s*\d|^\d+番$|聞いてください|選んでください|えらんでください|練習しましょう|始めます|ありません。?まず|^それから(その)?(話|返事)を聞いて|から[34]の中から|問題用紙を見て|矢印.*の人は何と言いますか|聴解試験を終わります/.test(s.replace(/\s|　/g, ''));
+  function shMark() { document.querySelectorAll('.lscript [data-lseek]').forEach((b, k) => b.classList.toggle('now', SH.on && k === SH.i)); const e = $('#sh-btn'); if (e) e.textContent = SH.on ? `■ 멈춤 (${SH.i + 1}/${shLines().length}줄)` : '▶ 한 줄씩 따라 말하기'; const st = $('#sh-state'); if (st) st.textContent = !SH.on ? '' : SH.wait ? '따라 말해 보세요…' : '듣는 중'; }
+  function shPlay() {
+    const a = $('#lau'); const L = shLines(); if (!a) return shStop();
+    while (SH.i < L.length && shSkip(L[SH.i][1])) SH.i++;
+    if (SH.i >= L.length) { shStop(); toast('끝까지 따라 했습니다'); return; }
+    SH.st = L[SH.i][0]; const nx = SH.i + 1 < L.length ? L[SH.i + 1][0] : (a.duration || SH.st + 8);
+    SH.end = Math.min(nx, SH.st + 15); SH.wait = false;
+    a.currentTime = Math.max(0, SH.st - 0.15); a.play().catch(() => shStop()); shMark();
+  }
+  function shTick() {
+    const a = $('#lau'); if (!SH.on || SH.wait || !a) return;
+    if (a.currentTime >= SH.end - 0.12 || a.ended) { a.pause(); SH.wait = true; shMark(); const dur = Math.max(0.8, SH.end - SH.st); SH.timer = setTimeout(() => { if (!SH.on) return; SH.i++; shPlay(); }, Math.min(9000, Math.max(1500, dur * 1150))); }
+  }
+  function shStart(i) { if (!shLines().length) return; shStop(true); SH.on = true; SH.i = i; shPlay(); }
+  function shStop(silent) { if (SH.timer) { clearTimeout(SH.timer); SH.timer = null; } const was = SH.on; SH.on = false; SH.wait = false; if (!silent) { const a = $('#lau'); if (a && was) a.pause(); shMark(); } }
   function lMark(it, ok) { S.listen = S.listen || {}; S.listen[it.id] = { ok, at: Date.now() }; logToday(); save(); }
   /* ───────── 동사 ─────────
      N5·N4 동사와 자주 나오는 N3 동사. 활용형(v.f)은 빌드할 때 tools/conj.js 로 만들어 data.js 에 들어 있다. */
@@ -1345,6 +1484,7 @@
     if (d.lporder) { S.set.lpOrder = d.lporder; save(); document.querySelectorAll('[data-lporder]').forEach(b => b.classList.toggle('on', b.dataset.lporder === d.lporder)); const a = $('#lpa'); if (a) a.pause(); LP.on = false; LP.key = ''; lpBuild(); lpLoad(false); return; }
     if (d.lpgap) { S.set.lpGap = +d.lpgap; save(); document.querySelectorAll('[data-lpgap]').forEach(b => b.classList.toggle('on', b.dataset.lpgap === d.lpgap)); lpShow(); return; }
     if (d.lrate) { S.set.lrate = +d.lrate; save(); const lpa = $('#lpa'); if (lpa && !LP.gap) lpa.playbackRate = +d.lrate; const a = $('#lau'); if (a) a.playbackRate = +d.lrate; document.querySelectorAll('[data-lrate]').forEach(b => b.classList.toggle('on', b.dataset.lrate === d.lrate)); return; }
+    if (d.lseek != null && SH.on) { const k = [...document.querySelectorAll('.lscript [data-lseek]')].indexOf(t); return shStart(Math.max(0, k)); }
     if (d.lseek != null) { const a = $('#lau'); if (a) { a.currentTime = Math.max(0, +d.lseek - 0.3); a.play(); } return; }
     if (d.lpick) { const vw = cur(); const it = lItems()[vw.i]; vw.pick = +d.lpick; vw.shown = true; lMark(it, it.ans ? vw.pick === it.ans : null); return render(); }
     if (d.lself != null) { const it = lItems()[cur().i]; lMark(it, d.lself === '1'); return render(); }
@@ -1355,6 +1495,10 @@
     switch (d.act) {
       case 'back': return back();
       case 'settings': return go({ v: 'settings' });
+      case 'mkexam': case 'mkfull': { const kind = d.act === 'mkexam' ? 'exam' : 'full'; if (planMk !== kind) { planMk = kind; render(); setTimeout(() => { if (planMk === kind) { planMk = null; if (tab === 'plan' && !cur()) render(); } }, 5000); return; } planMk = null; resetCourse(kind); toast(`${PLAN.name}로 새로 짰습니다. 1회차부터 시작하세요`); return render(); }
+      case 'exam': return examMock();
+      case 'weak': { if (!weakQuiz(10)) toast('틀린 기록이 아직 없습니다'); return; }
+      case 'shadow': return SH.on ? shStop() : shStart(0);
       case 'vbcards': return vbCards();
       case 'vbmean': return vbQuiz('mean');
       case 'vbconj': return go({ v: 'vconjmenu' });
@@ -1382,7 +1526,7 @@
       case 'flip': if (session && !session.flip) { session.flip = true; render(); } return;
       case 'recards': { const again = [...new Set(session.again || [])]; stack.pop(); return startCards(shuffle(again), session.title + ' · 다시'); }
       case 'next': session.i++; session.picked = null; render(); window.scrollTo(0, 0); return;
-      case 'requiz': { const ses = session; stack.pop(); return startQuiz(ses.title, shuffle(ses.qs).map(shuffleOpts), { setId: ses.setId }); }
+      case 'requiz': { const ses = session; stack.pop(); if (ses.exam) return examMock(); return startQuiz(ses.title, shuffle(ses.qs).map(shuffleOpts), { setId: ses.setId }); }
       case 'rewrong': { const ses = session; stack.pop(); return startQuiz(ses.title + ' · 오답', shuffle(ses.wrongIdx.map(i => ses.qs[i])).map(shuffleOpts)); }
       case 'mock': return mockQuiz();
       case 'ptype': return ptypeQuiz(d.type);
