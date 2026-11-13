@@ -27,6 +27,7 @@ function conj(w, r, g, flags = {}) {
     out = both(sw, sr, [(flags.sp ? 'い' : i) + 'ます', te, ta, a + 'ない', ee + 'ば', ee + 'る', a + 'れる', a + 'せる', o + 'う', flags.sp ? 'い' : ee]);
     if (r === 'ある') out[3] = ['ない', 'ない'];
   }
+  if (w === 'くれる') [5, 6, 7].forEach(k => { out[k] = null; }); // 가능·수동·사역은 실제로 쓰지 않음
   if (flags.nv) [5, 6, 7, 8, 9].forEach(k => { out[k] = null; });
   if (flags.sp) [5, 6, 7, 8].forEach(k => { out[k] = null; });
   return out;
