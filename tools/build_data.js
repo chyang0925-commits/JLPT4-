@@ -282,7 +282,27 @@ fs.readFileSync(__dirname + '/themes.txt', 'utf8').split('\n').forEach(line => {
   T.items.push(Object.assign({ k, w, r, m }, v ? { vid: v.w + '|' + v.r } : {}));
 });
 console.log('THEMES', THEMES.length, THEMES.reduce((s, t) => s + t.items.length, 0), 'warn', themeWarn);
+// 동사 (tools/verbs.txt, tools/verb_pairs.txt) — 활용형은 conj.js 로 미리 만들어 넣는다
+const { conj: conjVerb, FORMS: VFORMS } = require('./conj');
+const VERBS = fs.readFileSync(__dirname + '/verbs.txt', 'utf8').split('\n').filter(l => l.trim() && !l.startsWith('#')).map(l => {
+  const [w, r, m, g, tr, lv, fl] = l.trim().split('|');
+  const v = { id: 'vb:' + w + '|' + r, w, r, m, g: +g, tr, lv, f: conjVerb(w, r, +g, { nv: fl === 'nv', sp: fl === 'sp' }) };
+  if (fl === 'nv') v.nv = 1; if (fl === 'sp') v.sp = 1;
+  // る로 끝나지만 1그룹인 동사 (帰る·入る·走る …): い단·え단 + る 인데 5단 활용
+  if (+g === 1 && /[いきぎしじちにひびぴみりえけげせぜてでねへべぺめれ]る$/.test(r)) v.ex = 1;
+  if (VOCAB.some(x => x.w === w && x.r === r)) v.book = 1;
+  return v;
+});
+const VPAIRS = fs.readFileSync(__dirname + '/verb_pairs.txt', 'utf8').split('\n').filter(l => l.trim() && !l.startsWith('#')).map(l => {
+  const [n, nm, a, ar, b, br] = l.trim().split('|');
+  const A = VERBS.find(v => v.w === a && v.r === ar), B = VERBS.find(v => v.w === b && v.r === br);
+  if (!A || !B) throw new Error('verb pair not in verbs.txt: ' + l);
+  A.pair = B.id; B.pair = A.id;
+  return { n, nm, a: A.id, b: B.id };
+});
+console.log('VERBS', VERBS.length, 'pairs', VPAIRS.length, '예외 1그룹', VERBS.filter(v => v.ex).map(v => v.w).join(' '), '| 교재 등장', VERBS.filter(v => v.book).length);
 const out = {
+  VERBS, VPAIRS, VFORMS,
   THEMES,
   version: '4.0', LEGACY, LESSON_INFO, KANJI, VOCAB, SYN, PROBS,
   CONFUSE: CONFUSE.map(g => g.filter(c => kanjiSet.has(c) || true)), HOMO,

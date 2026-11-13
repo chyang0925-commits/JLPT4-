@@ -48,6 +48,8 @@
   if (!S.autoOff1) { S.set.auto = false; S.autoOff1 = true; } // v4.3: 음성은 🔊를 눌렀을 때만
   S.plan = Object.assign({}, DEF.plan, S.plan || {});
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { } };
+  const BK_KEYS = ['srs', 'wrong', 'best', 'log', 'seen', 'listen', 'lheard', 'lpPos', 'plan']; // 백업에 담는 기록 (설정은 기기마다 다르므로 제외)
+  let confirmReset = false; delete S._confirmReset;
   // 구버전(v3) 오답 기록 이전
   if (!S.migrated && N.LEGACY) {
     try {
@@ -216,7 +218,7 @@
     return `<header class="top">${backable ? '<button class="icon-btn" data-act="back" aria-label="뒤로">←</button>' : ''}<h1>${title}${sub ? ` <span class="sub">${sub}</span>` : ''}</h1>${right}</header>`;
   }
   function tabsHtml() {
-    const T = [['home', '今', '오늘'], ['plan', '程', '일정'], ['kanji', '漢', '한자'], ['vocab', '語', '어휘'], ['prob', '問', '문제'], ['wrong', '誤', '오답']];
+    const T = [['home', '今', '오늘'], ['plan', '程', '일정'], ['kanji', '漢', '한자'], ['vocab', '語', '어휘'], ['verb', '動', '동사'], ['prob', '問', '문제'], ['wrong', '誤', '오답']];
     const wc = Object.keys(S.wrong).length;
     return `<nav class="tabs" aria-label="메뉴"><div class="in">${T.map(([k, c, n]) => `<button class="${tab === k ? 'on' : ''}" data-tab="${k}"><b>${c}</b>${n}${k === 'wrong' && wc ? `<span class="badge">${wc > 99 ? '99+' : wc}</span>` : ''}</button>`).join('')}</div></nav>`;
   }
@@ -341,6 +343,7 @@
   }
   function itemOf(id) {
     if (id.startsWith('k:')) return { t: 'k', k: KMAP[id.slice(2)] };
+    if (id.startsWith('vb:')) return { t: 'b', b: VBMAP[id] };
     if (id.startsWith('s')) return { t: 's', s: SMAP[id] };
     return { t: 'v', v: VMAP[id] };
   }
@@ -362,6 +365,13 @@
         ${ex.length ? `<div class="wlist" style="width:100%;text-align:left">${ex.map(v => wordItem(v, false)).join('')}</div>` : ''}
         ${k.hint ? `<div class="hint" style="text-align:left">${esc(k.hint)}</div>` : ''}`;
       say = ex[0] ? sv(ex[0]) : (k.kun[0] || k.on[0] || '');
+    } else if (it.t === 'b') {
+      const v = it.b; const p = v.pair && VBMAP[v.pair];
+      front = `<div class="bigw">${esc(v.w)}</div><div class="ask">읽기 · 뜻 · 그룹 · て형을 떠올려 보세요</div>`;
+      backHtml = `${v.w !== v.r ? `<div class="rr">${esc(v.r)}</div>` : ''}<div class="mm">${esc(v.m)}</div><div class="vt">${vbTags(v)}</div>
+        <div class="ctable" style="width:100%;text-align:left">${[0, 1, 3].map(k => `<div class="crow"><span class="cn"><b>${VF[k]}</b></span><span class="cf jp">${vbRuby(v.f[k][0], v.f[k][1])}</span></div>`).join('')}</div>
+        ${p ? `<div class="hint" style="text-align:left">${p.tr === '자' ? '자동사 짝' : '타동사 짝'}: <span class="jp">${esc(p.w)}</span> (${esc(p.r)}) ${esc(p.m)}</div>` : ''}`;
+      say = v.r + '。' + v.f[1][1];
     } else if (it.t === 'v') {
       const v = it.v;
       front = `<div class="bigw">${esc(v.w)}</div><div class="ask">${hasK(v.w) ? '읽는 법과 뜻을 떠올려 보세요' : '뜻을 떠올려 보세요'}</div>`;
@@ -440,17 +450,22 @@
   }
 
   /* 퀴즈 문제 생성기 */
+  // 두 뜻풀이가 겹치는지 (예: '살다' 와 '살다, 지내다') — 겹치면 서로의 오답 보기로 쓰지 않는다
+  const glossSet = m => String(m).split(/[,·]/).map(x => x.replace(/[（(][^)）]*[)）]/g, '').trim()).filter(Boolean);
+  const glossOverlap = (a, b) => { const A = glossSet(a); return glossSet(b).some(x => A.includes(x)); };
   const vocabWithK = () => N.VOCAB.filter(v => hasK(v.w) && v.w !== v.r && v.r.length >= 2 && !/[ァ-ヶ]/.test(v.w));
   function qWordRead(v) { // 단어 → 읽기 (함정: 탁음·장음·촉음·요음)
-    const others = N.VOCAB.filter(x => x.r.length === v.r.length && x.r !== v.r).map(x => x.r);
-    const ds = fill(v.r, readingTraps(v.r), others);
+    const alt = new Set(N.VOCAB.filter(x => x.w === v.w).map(x => x.r)); // 같은 표기의 다른 읽기(開く=あく/ひらく)는 오답 보기로 쓰지 않는다
+    const others = N.VOCAB.filter(x => x.r.length === v.r.length && !alt.has(x.r)).map(x => x.r);
+    const ds = fill(v.r, readingTraps(v.r).filter(t => !alt.has(t)), others);
     const opts = shuffle([{ t: v.r, note: v.m, say: v.r }, ...ds.map(t => { const real = N.VOCAB.find(x => x.r === t && hasK(x.w)); return { t, say: t, note: real ? `${real.w} : ${real.m}` : '★ 발음 함정' }; })]);
     return { ins: '단어의 읽는 법으로 알맞은 것을 고르세요.', prompt: `<div class="q-big jp">${esc(v.w)}</div><div class="q-sub">${esc(v.m)}</div>`, opts, ans: opts.findIndex(o => o.t === v.r), wid: v.id, srsId: v.id, sayAfter: sv(v), explain: `<div class="kparts">${kparts(v.w)}</div>`, review: `${esc(v.w)} — ${esc(v.m)}` };
   }
   function qWordWrite(v) { // 읽기 → 표기 (함정: 닮은 한자 · 같은 읽기)
     const homo = N.VOCAB.filter(x => x.r === v.r && x.w !== v.w && hasK(x.w)).map(x => x.w);
     const share = N.VOCAB.filter(x => x.w !== v.w && hasK(x.w) && x.w.length === v.w.length && [...x.w].some(c => isK(c) && v.w.includes(c))).map(x => x.w);
-    const ds = fill(v.w, writeTraps(v.w).concat(homo), share.concat(N.VOCAB.filter(x => hasK(x.w) && x.w.length === v.w.length).map(x => x.w)));
+    const same = new Set(N.VOCAB.filter(x => x.r === v.r && x.m === v.m).map(x => x.w)); // 읽기·뜻이 같은 다른 표기(入口/入り口)는 제외
+    const ds = fill(v.w, writeTraps(v.w).concat(homo).filter(t => !same.has(t)), share.concat(N.VOCAB.filter(x => hasK(x.w) && x.w.length === v.w.length).map(x => x.w)).filter(t => !same.has(t)));
     const opts = shuffle([{ t: v.w, note: v.m, say: sv(v) }, ...ds.map(t => { const real = N.VOCAB.find(x => x.w === t); return { t, say: real ? sv(real) : null, note: real ? `${real.r} : ${real.m}` : '★ 틀린 표기 (닮은 한자)' }; })]);
     return { ins: '히라가나를 한자로 쓰면?', prompt: `<div class="q-big jp">${esc(v.r)}</div><div class="q-sub">${esc(v.m)}</div>`, sayBefore: sv(v), opts, ans: opts.findIndex(o => o.t === v.w), optClass: 'kj', two: true, wid: v.id, srsId: v.id, explain: `<div class="kparts">${kparts(v.w)}</div>`, review: `${esc(v.r)} — ${esc(v.m)}` };
   }
@@ -465,7 +480,8 @@
   function qKanjiPick(k, pool) {
     const sameOn = N.KANJI.filter(x => x.k !== k.k && x.on.some(o => k.on.includes(o))).map(x => x.k);
     const conf = (CONF[k.k] || []).filter(c => KMAP[c]);
-    const ds = fill(k.k, conf.concat(sameOn), pool.map(x => x.k).concat(N.KANJI.map(x => x.k)));
+    const notSame = c => !KMAP[c] || KMAP[c].hun !== k.hun; // 훈음이 같은 한자(道/途)는 제외
+    const ds = fill(k.k, conf.concat(sameOn).filter(notSame), pool.map(x => x.k).concat(N.KANJI.map(x => x.k)).filter(notSame));
     const opts = shuffle([{ t: k.k, note: k.hun }, ...ds.map(t => ({ t, note: KMAP[t] ? KMAP[t].hun : '' }))]);
     const rd = [k.on[0], k.kun[0] && k.kun[0].replace('.', '')].filter(Boolean).join(' / ');
     return { ins: '훈음과 읽기에 맞는 한자를 고르세요.', prompt: `<div class="hun" style="font-size:30px">${esc(k.hun)}</div><div class="q-sub jp">${esc(rd)}</div>`, opts, ans: opts.findIndex(o => o.t === k.k), optClass: 'kj', two: true, wid: kid(k.k), srsId: kid(k.k), sayBefore: k.kun[0] ? k.kun[0].replace('.', '') : k.on[0], review: esc(k.hun), time: 12 };
@@ -561,7 +577,8 @@
       });
     } else if (mode === 'mean') {
       qs = pick(items, 20).map(v => {
-        const ds = fill(v.m, items.filter(x => x !== v).map(x => x.m), N.VOCAB.map(x => x.m));
+        const okM = m => !glossOverlap(v.m, m);
+        const ds = fill(v.m, items.filter(x => x !== v).map(x => x.m).filter(okM), N.VOCAB.map(x => x.m).filter(okM));
         const opts = shuffle([{ t: v.m, note: v.r }, ...ds.map(t => { const x = N.VOCAB.find(y => y.m === t); return { t, note: x ? x.w + (x.w !== x.r ? ' (' + x.r + ')' : '') : '' }; })]);
         return { ins: '단어의 뜻을 고르세요.', prompt: `<div class="q-big jp">${esc(v.w)}</div>`, sayBefore: hasK(v.w) ? '' : sv(v), opts, ans: opts.findIndex(o => o.t === v.m), optClass: 'ko', two: true, sayAfter: sv(v), wid: v.id, review: esc(v.w) };
       });
@@ -600,17 +617,19 @@
     const ks = keys.filter(k => k.startsWith('k:')).map(k => KMAP[k.slice(2)]).filter(Boolean);
     const vs = keys.filter(k => VMAP[k]).map(k => VMAP[k]);
     const ss = keys.filter(k => SMAP[k]).map(k => SMAP[k]);
+    const bs = keys.filter(k => VBMAP[k]).map(k => VBMAP[k]);
     const ps = keys.filter(k => k.startsWith('p:')).map(k => { const [id, qi] = k.slice(2).split('-').map(Number); return PMAP[id] ? { p: PMAP[id], qi, k } : null; }).filter(Boolean);
     if (!keys.length) return top('오답노트', '', false) + '<div class="empty"><div class="stamp">済</div><p>틀린 항목이 없습니다.<br>문제를 풀거나 카드에서 「모름」을 누르면 여기에 모입니다.</p></div>';
     return top('오답노트', `${keys.length}개`, false) + `
     <p class="small muted" style="margin-top:14px">맞히면 횟수가 줄고, 카드에서 「앎」으로 충분히 외우면 자동으로 빠집니다.</p>
     <div class="sec"><div class="btn-grid">
-      <button class="btn pri" data-act="wcards" ${ks.length + vs.length + ss.length ? '' : 'disabled'}><span>오답 카드 복습</span><small style="color:inherit;opacity:.8">한자 ${ks.length} · 어휘 ${vs.length + ss.length}</small></button>
+      <button class="btn pri" data-act="wcards" ${ks.length + vs.length + ss.length + bs.length ? '' : 'disabled'}><span>오답 카드 복습</span><small style="color:inherit;opacity:.8">한자 ${ks.length} · 어휘 ${vs.length + ss.length} · 동사 ${bs.length}</small></button>
       <button class="btn" data-act="pwrong" ${ps.length ? '' : 'disabled'}><span>틀린 문제 다시 풀기</span><small>${ps.length}문항</small></button>
     </div></div>
     ${ks.length ? `<div class="sec"><div class="sec-h"><h2>한자 ${ks.length}</h2></div><div class="kgrid">${ks.map(k => `<button class="ktile" data-kanji="${k.k}"><span class="dot st1"></span><span class="c">${k.k}</span><span class="h">${esc(k.hun)}</span></button>`).join('')}</div></div>` : ''}
     ${vs.length ? `<div class="sec"><div class="sec-h"><h2>어휘 ${vs.length}</h2></div><div class="wlist">${vs.map(v => wordItem(v)).join('')}</div></div>` : ''}
     ${ss.length ? `<div class="sec"><div class="sec-h"><h2>유의표현 ${ss.length}</h2></div><div class="wlist">${ss.map(s => `<div class="witem"><div class="grow"><div class="jp" style="font-weight:700">${esc(s.a)}</div><div class="r">≒ ${esc(s.b)}</div></div>${spkBtn(s.sa || s.a)}</div>`).join('')}</div></div>` : ''}
+    ${bs.length ? `<div class="sec"><div class="sec-h"><h2>동사 ${bs.length}</h2></div><div class="vlist">${bs.map(vbRow).join('')}</div></div>` : ''}
     ${ps.length ? `<div class="sec"><div class="sec-h"><h2>기출 문제 ${ps.length}</h2></div><div class="list">${ps.slice(0, 40).map(({ p, qi }) => { const q = p.qs[qi]; return `<div class="panel"><div class="small muted"><span class="tag ${p.type}">${TYPE_NAME[p.type]}</span> ${esc(p.title)} · ${qi + 1}번</div><div class="q-sent" style="font-size:16px;line-height:2">${p.type === 'use' ? esc(q.s) : ruby(q.s, p.type === 'ctx' ? null : q.u)}</div><div class="row"><span class="grow" style="color:var(--ok);font-weight:700">정답: ${esc(q.o[q.a][0])}</span>${q.sa ? spkBtn(q.sa) : ''}</div></div>`; }).join('')}</div></div>` : ''}
     <div class="sec"><button class="btn block" data-act="clearwrong">오답노트 비우기</button></div>`;
   };
@@ -717,7 +736,13 @@
   })();
   const fmtD = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   const mdLabel = s => { const d = new Date(s + 'T00:00:00'); return `${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})`; };
-  const validId = id => id.startsWith('k:') ? !!KMAP[id.slice(2)] : !!(VMAP[id] || SMAP[id]);
+  const validId = id => id.startsWith('k:') ? !!KMAP[id.slice(2)] : !!(VMAP[id] || SMAP[id] || VBMAP[id]);
+  // 데이터에서 사라진 항목의 오답 기록은 지운다 (배지 숫자가 목록과 어긋나거나 오답 단계가 막히는 것 방지)
+  function cleanWrong() {
+    let n = 0;
+    Object.keys(S.wrong).forEach(k => { let ok = validId(k); if (k.startsWith('p:')) { const [id, qi] = k.slice(2).split('-').map(Number); ok = !!(PMAP[id] && PMAP[id].qs[qi]); } if (!ok) { delete S.wrong[k]; n++; } });
+    return n;
+  }
   function reviewIds() { const now = Date.now(); return shuffle(Object.keys(S.srs).filter(id => S.srs[id].due <= now && validId(id))).slice(0, 40); }
   // 복습 차례가 아직 안 된 경우: 오답 우선, 그다음 복습일이 가까운 카드 20장
   function previewIds() { const ids = Object.keys(S.srs).filter(validId); const w = id => (S.wrong[id] ? 0 : 1); return shuffle(ids.sort((a, b) => w(a) - w(b) || S.srs[a].due - S.srs[b].due).slice(0, 20)); }
@@ -746,11 +771,11 @@
   function finishChapter(n) { S.plan.fin[n] = todayStr(); if (S.plan.focus && S.plan.focus.n === n) S.plan.focus = null; save(); toast(n === PLAN_N ? '30회 코스를 모두 마쳤습니다. 시험 잘 보세요!' : `${n}회차 완료! 수고했습니다`); }
   function planDone(ses) { if (ses.plan && !ses.planMarked) { ses.planMarked = 1; markStep(ses.plan.n, ses.plan.si, false); } }
   function ptypeQuiz(type) { const all = N.PROBS.filter(p => (type === 'mix' ? p.L === 15 : p.type === type)).flatMap(p => p.qs.map((_, i) => probQ(p, i))); return startQuiz(TYPE_NAME[type] + ' 랜덤', pickFresh(all, 20)); }
-  function wrongCards() { return startCards(shuffle(Object.keys(S.wrong).filter(k => (k.startsWith('k:') && KMAP[k.slice(2)]) || VMAP[k] || SMAP[k])), '오답 카드'); }
+  function wrongCards() { return startCards(shuffle(Object.keys(S.wrong).filter(k => (k.startsWith('k:') && KMAP[k.slice(2)]) || VMAP[k] || SMAP[k] || VBMAP[k])), '오답 카드'); }
   function runStep(n, si) {
     const st = PLAN.sessions[n - 1].steps[si];
     pendingPlan = { n, si };
-    if (!S.plan.focus) { S.plan.focus = { n, t0: Date.now() }; save(); }
+    if (!S.plan.focus || S.plan.focus.n !== n || Date.now() - S.plan.focus.t0 > 3 * 3600e3) { S.plan.focus = { n, t0: Date.now() }; save(); }
     switch (st.k) {
       case 'rev': { const ids = reviewIds(); if (ids.length) return startCards(ids, `${n}회차 · 복습`); const pv = previewIds(); if (pv.length) return startCards(pv, `${n}회차 · 미리 복습`); pendingPlan = null; toast('아직 학습한 카드가 없어 복습을 건너뜁니다'); return markStep(n, si, true); }
       case 'kc': return startCards(shuffle(st.ids).map(kid), `${n}회차 · 새 한자`);
@@ -760,7 +785,7 @@
       case 'mock': return mockQuiz();
       case 'ptype': return ptypeQuiz(st.type);
       case 'cquiz': return confuseQuiz();
-      case 'wcards': { if (!Object.keys(S.wrong).some(k => k.startsWith('k:') || VMAP[k] || SMAP[k])) { pendingPlan = null; toast('오답 카드가 없습니다. 완료로 표시했어요'); return markStep(n, si, true); } return wrongCards(); }
+      case 'wcards': { if (!Object.keys(S.wrong).some(k => k.startsWith('k:') || VMAP[k] || SMAP[k] || VBMAP[k])) { pendingPlan = null; toast('오답 카드가 없습니다. 완료로 표시했어요'); return markStep(n, si, true); } return wrongCards(); }
       case 'pwrong': { if (!Object.keys(S.wrong).some(k => k.startsWith('p:'))) { pendingPlan = null; toast('틀린 기출이 없습니다. 완료로 표시했어요'); return markStep(n, si, true); } return wrongProbQuiz(); }
     }
   }
@@ -805,6 +830,7 @@
   };
   VIEWS.chapter = (vw) => {
     const n = vw.n; const st = PLAN.sessions[n - 1]; const dates = planDates();
+    if (S.plan.focus && Date.now() - S.plan.focus.t0 > 3 * 3600e3) { S.plan.focus = null; save(); }
     const fin = S.plan.fin[n]; const f = S.plan.focus && S.plan.focus.n === n ? S.plan.focus : null;
     const el = () => Math.floor((Date.now() - f.t0) / 60e3);
     if (f) vw.after = () => { focusId = setInterval(() => { const e = $('#focus-el'); if (e) e.textContent = el() + '분'; }, 20e3); };
@@ -1088,6 +1114,183 @@
     </div></div>`;
   };
   function lMark(it, ok) { S.listen = S.listen || {}; S.listen[it.id] = { ok, at: Date.now() }; logToday(); save(); }
+  /* ───────── 동사 ─────────
+     N5·N4 동사와 자주 나오는 N3 동사. 활용형(v.f)은 빌드할 때 tools/conj.js 로 만들어 data.js 에 들어 있다. */
+  const VBMAP = {}; N.VERBS.forEach(v => { VBMAP[v.id] = v; });
+  const VF = N.VFORMS; // ['ます형','て형','た형','ない형','ば형 (가정)','가능형','수동형','사역형','의지형','명령형']
+  const VF_KO = ['~합니다', '~하고, ~해서', '~했다', '~하지 않다', '~하면', '~할 수 있다', '~당하다, ~되다', '~하게 하다', '~하자, ~해야지', '~해라'];
+  const G_NAME = { 1: '1그룹', 2: '2그룹', 3: '3그룹' };
+  const G_DESC = { 1: '5단 동사 — 끝 글자가 う단, 활용할 때 끝 글자가 바뀜', 2: '1단 동사 — い단·え단 + る, る만 떼고 붙임', 3: '불규칙 — する·来る' };
+  const VLV = { N5: 'N5', N4: 'N4', N3: 'N3 빈출' };
+  let vbF = { lv: 'all', g: 'all', tr: 'all', q: '' };
+  const vbPool = () => N.VERBS.filter(v => (vbF.lv === 'all' || v.lv === vbF.lv) && (vbF.g === 'all' || (vbF.g === 'ex' ? v.ex : v.g === +vbF.g)) && (vbF.tr === 'all' || v.tr === vbF.tr) && (!vbF.q || v.w.includes(vbF.q) || v.r.includes(vbF.q) || v.m.includes(vbF.q)));
+  const vbRuby = (w, r) => (w === r ? esc(w) : `<ruby>${esc(w)}<rt>${esc(r)}</rt></ruby>`);
+  const vbTags = v => `<span class="vtag g${v.g}">${G_NAME[v.g]}</span><span class="vtag ${v.tr === '자' ? 'ji' : 'ta'}">${v.tr}동사</span>${v.ex ? '<span class="vtag ex">예외</span>' : ''}`;
+  function vbRow(v) {
+    return `<button class="vrow" data-verb="${esc(v.id)}"><i class="dot st${stateOf(v.id)}"></i><span class="vw jp">${vbRuby(v.w, v.r)}</span><span class="vm">${esc(v.m)}</span><span class="vt">${vbTags(v)}</span></button>`;
+  }
+  VIEWS.verb = () => {
+    const pool = vbPool(); const all = N.VERBS;
+    const chip = (k, val, label) => `<button class="chip ${vbF[k] === val ? 'on' : ''}" data-vbf="${k}" data-val="${val}">${label}</button>`;
+    const due = dueList(all.map(v => v.id)).length; const fresh = all.filter(v => !srs(v.id)).length;
+    return top('동사', `${all.length}개`, false) + `
+    <div class="sec"><div class="panel">
+      ${['N5', 'N4', 'N3'].map(lv => { const list = all.filter(v => v.lv === lv); const c = [0, 0, 0, 0]; list.forEach(v => c[stateOf(v.id)]++); return `<div class="lv-row"><span class="lv">${VLV[lv]}</span>${statBar(c, list.length)}<span class="n">${c[3]}/${list.length}</span></div>`; }).join('')}
+    </div></div>
+    <div class="sec"><div class="btn-grid">
+      <button class="btn pri" data-act="vbcards"><span>카드로 외우기</span><small style="color:inherit;opacity:.8">복습 ${due} · 새 동사 ${Math.min(10, fresh)}</small></button>
+      <button class="btn" data-act="vbmean"><span>뜻 퀴즈 15</span><small>동사 ↔ 뜻</small></button>
+      <button class="btn" data-act="vbconj"><span>활용 퀴즈 15</span><small>て형·ない형·가능형 …</small></button>
+      <button class="btn" data-act="vbgroup"><span>그룹 구분 퀴즈</span><small>る로 끝나는 예외 집중</small></button>
+      <button class="btn" data-act="vbpair"><span>자·타동사 짝 퀴즈</span><small>が開く · を開ける (${N.VPAIRS.length}쌍)</small></button>
+      <button class="btn" data-act="vbguide"><span>활용 규칙 한눈에</span><small>그룹 구분 · て형 만드는 법</small></button>
+    </div>
+    <p class="small muted" style="margin:8px 0 0">아래에서 고른 범위(레벨·그룹)가 카드와 퀴즈에 그대로 적용됩니다.</p></div>
+    <div class="sec">
+      <input class="search" id="vb-q" type="search" placeholder="동사 검색 (한자 · 읽기 · 뜻)" value="${esc(vbF.q)}" aria-label="동사 검색">
+      <div class="chips" style="margin-top:10px">${chip('lv', 'all', '전체')}${chip('lv', 'N5', 'N5')}${chip('lv', 'N4', 'N4')}${chip('lv', 'N3', 'N3 빈출')}</div>
+      <div class="chips" style="margin-top:6px">${chip('g', 'all', '모든 그룹')}${chip('g', '1', '1그룹')}${chip('g', '2', '2그룹')}${chip('g', '3', '3그룹')}${chip('g', 'ex', '예외 1그룹')}</div>
+      <div class="chips" style="margin-top:6px">${chip('tr', 'all', '자·타 모두')}${chip('tr', '자', '자동사')}${chip('tr', '타', '타동사')}</div>
+    </div>
+    <div class="sec"><div class="sec-h"><h2>목록</h2><span class="more">${pool.length}개</span></div>
+      <div class="vlist">${pool.length ? pool.map(vbRow).join('') : '<p class="empty">조건에 맞는 동사가 없습니다.</p>'}</div></div>`;
+  };
+  VIEWS.vdetail = (vw) => {
+    const v = VBMAP[vw.id]; if (!v) return top('동사', '', true);
+    const p = v.pair && VBMAP[v.pair];
+    const rule = v.g === 1 ? `끝 글자 「${v.r.slice(-1)}」 → て형 「${v.f[1][1].slice(v.r.length - 1)}」` : v.g === 2 ? '「る」를 떼고 그대로 붙입니다' : '불규칙 활용이라 통째로 외웁니다';
+    return top('동사', VLV[v.lv], true) + `
+    <div class="sec"><div class="panel vhead">
+      <div class="row" style="align-items:flex-start"><div class="grow"><div class="vbig jp">${vbRuby(v.w, v.r)}</div><div class="mm" style="font-size:18px;margin-top:6px">${esc(v.m)}</div></div>${spkBtn(v.r, 'lg')}</div>
+      <div class="vt" style="margin-top:10px">${vbTags(v)}${v.nv ? '<span class="vtag">무의지</span>' : ''}${v.book ? '<span class="vtag">교재 수록</span>' : ''}</div>
+      <p class="small muted" style="margin:10px 0 0">${G_NAME[v.g]}: ${G_DESC[v.g]}.${v.ex ? ' <b style="color:var(--ng)">る로 끝나고 앞이 い단·え단이지만 1그룹</b>입니다. 「' + esc(v.f[0][1]) + '」처럼 활용합니다.' : ''}</p>
+      ${p ? `<button class="pairbox" data-verb="${esc(p.id)}"><span class="small muted">${p.tr === '자' ? '짝이 되는 자동사 (〜が)' : '짝이 되는 타동사 (〜を)'}</span><b class="jp">${vbRuby(p.w, p.r)}</b><span>${esc(p.m)}</span></button>` : ''}
+    </div></div>
+    <div class="sec"><div class="sec-h"><h2>활용</h2><span class="more">${rule}</span></div>
+      <div class="ctable">${v.f.map((f, k) => (f ? `<div class="crow"><span class="cn"><b>${VF[k]}</b><small>${VF_KO[k]}</small></span><span class="cf jp">${vbRuby(f[0], f[1])}</span>${spkBtn(f[1], 'sm')}</div>` : '')).join('')}</div>
+      ${v.nv ? '<p class="small muted" style="margin-top:8px">저절로 일어나는 일을 나타내는 무의지 동사라서 가능형·의지형·명령형 등은 보통 쓰지 않아 표에서 뺐습니다.</p>' : ''}
+      ${v.sp ? '<p class="small muted" style="margin-top:8px">존경어 특수 활용: ます형이 「〜ります」가 아니라 「〜います」가 됩니다.</p>' : ''}
+      ${v.g === 2 && !v.nv ? '<p class="small muted" style="margin-top:8px">2그룹은 가능형과 수동형의 모양이 같습니다(〜られる). 문맥으로 구별합니다.</p>' : ''}
+    </div>
+    <div class="sec"><div class="grade"><button class="btn g1" data-vg="1">모름</button><button class="btn g2" data-vg="2">애매</button><button class="btn g3" data-vg="3">앎</button></div></div>`;
+  };
+  VIEWS.vguide = () => top('활용 규칙 한눈에', '', true) + `
+    <div class="sec"><div class="panel guide">
+      <h3>1. 그룹 구분</h3>
+      <ol>
+        <li><b>3그룹</b>: する, 来る(くる) 두 개뿐입니다. 「勉強する」처럼 する가 붙은 말도 여기에 듭니다.</li>
+        <li><b>2그룹</b>: る로 끝나고, る 바로 앞이 <b>い단·え단</b>입니다. 食べる(べ), 見る(み), 起きる(き)</li>
+        <li><b>1그룹</b>: 나머지 전부입니다. 書く, 飲む, 話す, 買う, 作る(く 앞이 う단)</li>
+      </ol>
+      <p class="warn"><b>예외</b> — 모양은 2그룹인데 1그룹인 동사: ${N.VERBS.filter(v => v.ex).map(v => `<span class="jp">${esc(v.w)}</span>`).join(' · ')}<br>시험에 자주 나옵니다. 帰<u>り</u>ます · 入<u>り</u>ます · 走<u>り</u>ます · 切<u>り</u>ます · 知<u>り</u>ます</p>
+      <h3>2. 1그룹 て형 (た형도 같은 규칙)</h3>
+      <table class="gt"><tr><th>끝 글자</th><th>て형</th><th>예</th></tr>
+        <tr><td>う · つ · る</td><td><b>って</b></td><td class="jp">買う→買って, 待つ→待って, 作る→作って</td></tr>
+        <tr><td>む · ぶ · ぬ</td><td><b>んで</b></td><td class="jp">飲む→飲んで, 遊ぶ→遊んで, 死ぬ→死んで</td></tr>
+        <tr><td>く</td><td><b>いて</b></td><td class="jp">書く→書いて <span class="ko">(예외: 行く→行って)</span></td></tr>
+        <tr><td>ぐ</td><td><b>いで</b></td><td class="jp">泳ぐ→泳いで</td></tr>
+        <tr><td>す</td><td><b>して</b></td><td class="jp">話す→話して</td></tr></table>
+      <h3>3. 그룹별 활용 요약</h3>
+      <table class="gt"><tr><th></th><th>1그룹 <span class="jp">書く</span></th><th>2그룹 <span class="jp">食べる</span></th><th>3그룹</th></tr>
+        <tr><td>ます</td><td class="jp">書<b>き</b>ます</td><td class="jp">食べます</td><td class="jp">します · きます</td></tr>
+        <tr><td>ない</td><td class="jp">書<b>か</b>ない</td><td class="jp">食べない</td><td class="jp">しない · こない</td></tr>
+        <tr><td>가능</td><td class="jp">書<b>け</b>る</td><td class="jp">食べられる</td><td class="jp">できる · こられる</td></tr>
+        <tr><td>수동</td><td class="jp">書<b>か</b>れる</td><td class="jp">食べられる</td><td class="jp">される · こられる</td></tr>
+        <tr><td>사역</td><td class="jp">書<b>か</b>せる</td><td class="jp">食べさせる</td><td class="jp">させる · こさせる</td></tr>
+        <tr><td>의지</td><td class="jp">書<b>こ</b>う</td><td class="jp">食べよう</td><td class="jp">しよう · こよう</td></tr>
+        <tr><td>가정</td><td class="jp">書<b>け</b>ば</td><td class="jp">食べれば</td><td class="jp">すれば · くれば</td></tr>
+        <tr><td>명령</td><td class="jp">書<b>け</b></td><td class="jp">食べろ</td><td class="jp">しろ · こい</td></tr></table>
+      <p class="small muted">1그룹은 끝 글자를 あ·い·え·お단으로 바꾸고, 2그룹은 る만 떼면 됩니다.</p>
+      <h3>4. 자동사와 타동사</h3>
+      <p><b>자동사</b>는 「〜<b>が</b>」와 쓰고 저절로 그렇게 됨을, <b>타동사</b>는 「〜<b>を</b>」와 쓰고 누가 그렇게 함을 나타냅니다.<br><span class="jp">ドア<b>が</b>開く</span> 문이 열리다 · <span class="jp">ドア<b>を</b>開ける</span> 문을 열다<br>「〜ています」(상태)는 자동사, 「〜てあります」(해 둠)는 타동사와 씁니다.</p>
+    </div></div>`;
+  // ── 카드 ──
+  function vbCards() {
+    const pool = vbPool().map(v => v.id); const due = shuffle(dueList(pool)).slice(0, 30);
+    const fresh = pool.filter(id => !srs(id)).slice(0, 10);
+    const ids = due.concat(fresh);
+    if (!ids.length) { const soon = pool.filter(id => srs(id)).sort((a, b) => S.srs[a].due - S.srs[b].due).slice(0, 15); return startCards(shuffle(soon), '동사 · 미리 복습'); }
+    startCards(ids, '동사 카드');
+  }
+  // ── 활용 오답 보기 만들기: 다른 그룹 규칙·다른 단·다른 て형 규칙을 잘못 적용한 모양 ──
+  const V_ROW = { う: 'わいえお', く: 'かきけこ', ぐ: 'がぎげご', す: 'さしせそ', つ: 'たちてと', ぬ: 'なにねの', ぶ: 'ばびべぼ', む: 'まみめも', る: 'らりれろ' };
+  const V_SUF1 = [['ます', 1], null, null, ['ない', 0], ['ば', 2], ['る', 2], ['れる', 0], ['せる', 0], ['う', 3], ['', 2]]; // [붙는 말, 올바른 단(0あ 1い 2え 3お)]
+  const V_SUF2 = ['ます', 'て', 'た', 'ない', 'れば', 'られる', 'られる', 'させる', 'よう', 'ろ'];
+  function conjTraps(v, k) {
+    const useR = v.g === 3 && !v.r.endsWith('する'); // 来る는 표기가 같으므로 읽기로 출제
+    const F = x => (useR ? x[1] : x[0]);
+    const base = useR ? v.r : v.w; const e = base.slice(-1), stem = base.slice(0, -1); const good = F(v.f[k]);
+    const suru = v.g === 3 && !useR;
+    // A: 같은 동사의 다른 활용형 (실제로 헷갈리는 것) — 가능↔수동↔사역, 의지↔명령↔가정, て↔た, ます↔ない
+    const near = { 0: [3, 5], 1: [2], 2: [1], 3: [0, 6], 4: [8, 9, 5], 5: [6, 7, 4], 6: [5, 7], 7: [6, 5], 8: [4, 9], 9: [8, 4] }[k];
+    const A = near.filter(n => v.f[n]).map(n => F(v.f[n]));
+    // B: 규칙을 잘못 적용한 모양 — 다른 단, 다른 그룹 규칙, 다른 て형 규칙
+    const B = new Set(); const row = V_ROW[e];
+    if (suru) { const s3 = base.slice(0, -2); ['し', 'す', 'せ', 'さ'].forEach(x => B.add(s3 + x + V_SUF2[k])); if (k === 5) B.add(s3 + 'しれる'); }
+    else if (k === 1 || k === 2) { ['って', 'んで', 'いて', 'いで', 'して', 'て', 'りて'].forEach(t => B.add(stem + (k === 2 ? t.replace(/て$/, 'た').replace(/で$/, 'だ') : t))); }
+    else {
+      if (row && V_SUF1[k] && v.g === 1) [0, 1, 2, 3].forEach(i => B.add(stem + row[i] + V_SUF1[k][0])); // 단을 잘못 고름
+      if (e === 'る' && v.g === 1) B.add(stem + V_SUF2[k]);                                              // 1그룹인데 2그룹처럼 る만 뗌
+      if (v.g === 2) { B.add(stem + 'り' + V_SUF2[k]); B.add(stem + 'ら' + (V_SUF1[k] ? V_SUF1[k][0] : V_SUF2[k])); B.add(stem + 'れ' + V_SUF2[k]); if (V_SUF1[k]) B.add(stem + 'り' + V_SUF1[k][0]); }
+      if (useR) ['き', 'こ', 'く'].forEach(x => B.add(x + V_SUF2[k]));
+      if (k === 9) { B.add(stem + 'ろ'); B.add(stem + 'よ'); }
+    }
+    const own = new Set(v.f.filter(Boolean).map(F));
+    const ok = x => x && x !== good && x !== base;
+    const a = shuffle(A.filter(ok)); const b = shuffle([...B].filter(x => ok(x) && !own.has(x) && !(v.g === 2 && k === 5 && x === stem + 'れる'))); // ら抜き(食べれる)는 회화에서 쓰이므로 제외
+    const traps = [...new Set(a.slice(0, 2).concat(b))].slice(0, 3);
+    return { good, traps, useR };
+  }
+  function qVerbConj(v, k) {
+    const { good, traps, useR } = conjTraps(v, k);
+    const nameOf = t => { const n = v.f.findIndex(f => f && (useR ? f[1] : f[0]) === t); return n >= 0 ? `이것은 ${VF[n]}` : '없는 모양'; };
+    const opts = shuffle([{ t: good, say: v.f[k][1], note: VF[k] }, ...traps.map(t => ({ t, note: nameOf(t) }))]);
+    const why = v.g === 1 ? (k === 1 || k === 2 ? `1그룹, 끝 글자 「${v.r.slice(-1)}」 → 「${v.f[k][1].slice(v.r.length - 1)}」${v.r === 'いく' ? ' (行く만 예외로 って)' : ''}` : `1그룹: 끝 글자 「${v.r.slice(-1)}」를 바꿔서 「${v.f[k][1].slice(v.r.length - 1)}」`) + (v.ex ? ' · る로 끝나지만 1그룹(예외)' : '') : v.g === 2 ? '2그룹: る를 떼고 붙입니다' : '3그룹: 불규칙이라 통째로 외웁니다';
+    return { ins: `「${VF[k]}」을 고르세요. <span class="muted">${VF_KO[k]}</span>`, prompt: `<div class="q-big jp">${vbRuby(v.w, v.r)}</div><div class="q-sub">${esc(v.m)} · ${G_NAME[v.g]}</div>`, opts, ans: opts.findIndex(o => o.t === good), optClass: 'jp', two: true, wid: v.id, srsId: v.id, sayAfter: v.f[k][1],
+      explain: `<div class="small">${why}</div><div class="small muted">${useR ? esc(v.f[k][0]) + ' = ' : ''}${esc(v.f[k][1])}</div>`, review: `${esc(v.w)} → ${VF[k]}`, time: 15 };
+  }
+  function qVerbMean(v, pool, rev) {
+    const far = x => x.id !== v.id && !glossOverlap(v.m, x.m); // 뜻이 겹치는 동사(思う·考える)는 보기에서 제외
+    const mates = pool.filter(far); const allFar = N.VERBS.filter(far);
+    if (rev) { // 뜻 → 동사
+      const ds = fill(v.w, mates.filter(x => x.g === v.g).map(x => x.w), allFar.map(x => x.w));
+      const opts = shuffle([{ t: v.w, note: v.r, say: v.r }, ...ds.map(w => { const x = N.VERBS.find(y => y.w === w); return { t: w, note: x ? `${x.r} · ${x.m}` : '', say: x ? x.r : null }; })]);
+      return { ins: '뜻에 맞는 동사를 고르세요.', prompt: `<div class="q-big" style="font-size:26px">${esc(v.m)}</div>`, opts, ans: opts.findIndex(o => o.t === v.w), optClass: 'jp', two: true, wid: v.id, srsId: v.id, sayAfter: v.r, review: `${esc(v.m)}`, time: 12 };
+    }
+    const ds = fill(v.m, mates.map(x => x.m), allFar.map(x => x.m));
+    const opts = shuffle([{ t: v.m, note: v.r }, ...ds.map(m => { const x = N.VERBS.find(y => y.m === m); return { t: m, note: x ? x.w : '' }; })]);
+    return { ins: '이 동사의 뜻은?', prompt: `<div class="q-big jp">${esc(v.w)}</div>`, opts, ans: opts.findIndex(o => o.t === v.m), optClass: 'ko', wid: v.id, srsId: v.id, sayAfter: v.r, explain: `<div class="small muted">${esc(v.r)} · ${G_NAME[v.g]} · ${v.tr}동사</div>`, review: esc(v.w), time: 12 };
+  }
+  function qVerbGroup(v) {
+    const opts = [1, 2, 3].map(g => ({ t: `${G_NAME[g]} (${g === 1 ? '5단' : g === 2 ? '1단' : '불규칙'})`, note: g === v.g ? `ます형: ${v.f[0][1]}` : '' }));
+    const why = v.g === 3 ? 'する·来る 계열은 3그룹입니다.' : v.ex ? `る 앞이 い단·え단이라 2그룹처럼 보이지만 <b>예외로 1그룹</b>입니다. ます형은 「${esc(v.f[0][1])}」.` : v.g === 2 ? `る로 끝나고 る 앞이 い단·え단 → 2그룹. ます형은 「${esc(v.f[0][1])}」.` : v.r.endsWith('る') ? `る로 끝나지만 る 앞이 あ·う·お단 → 1그룹. ます형은 「${esc(v.f[0][1])}」.` : `る로 끝나지 않으므로 1그룹. ます형은 「${esc(v.f[0][1])}」.`;
+    return { ins: '이 동사는 몇 그룹일까요?', prompt: `<div class="q-big jp">${vbRuby(v.w, v.r)}</div><div class="q-sub">${esc(v.m)}</div>`, opts, ans: v.g - 1, optClass: 'ko', wid: v.id, srsId: v.id, sayAfter: v.f[0][1], explain: `<div class="small">${why}</div>`, review: `${esc(v.w)} — ${G_NAME[v.g]}`, time: 10 };
+  }
+  function qVerbPair(p) {
+    const A = VBMAP[p.a], B = VBMAP[p.b]; const intr = Math.random() < 0.5; const T = intr ? A : B;
+    const good = `${intr ? 'が' : 'を'} ${T.w}`;
+    const opts = shuffle([{ t: `が ${A.w}`, note: `${p.nm} + ${A.m} (자동사)`, say: p.n + 'が' + A.r }, { t: `を ${B.w}`, note: `${p.nm} + ${B.m} (타동사)`, say: p.n + 'を' + B.r }, { t: `を ${A.w}`, note: '자동사에는 を를 쓰지 않습니다' }, { t: `が ${B.w}`, note: '타동사의 대상에는 を를 씁니다' }]);
+    return { ins: '뜻에 맞게 조사와 동사를 고르세요.', prompt: `<div class="q-big jp">${esc(p.n)} <span class="tblank">＿ ＿＿＿</span></div><div class="q-sub">${esc(p.nm)} · <b>${esc(T.m)}</b> <span class="muted">(${intr ? '저절로 그렇게 됨' : '누가 그렇게 함'})</span></div>`, opts, ans: opts.findIndex(o => o.t === good), optClass: 'jp', two: true, wid: T.id, srsId: T.id, sayAfter: p.n + (intr ? 'が' : 'を') + T.r,
+      explain: `<div class="small"><span class="jp">${esc(p.n)}が${esc(A.w)}</span> ${esc(A.m)} (자동사) · <span class="jp">${esc(p.n)}を${esc(B.w)}</span> ${esc(B.m)} (타동사)</div>`, review: `${esc(p.n)} ${good}`, time: 15 };
+  }
+  // 약한 동사(오답·미학습)를 앞세워 고른다
+  function vbPick(list, n) { const w = v => (S.wrong[v.id] ? 0 : !srs(v.id) ? 1 : stateOf(v.id) < 3 ? 2 : 3); return shuffle(shuffle(list).sort((a, b) => w(a) - w(b)).slice(0, n)); }
+  function vbQuiz(kind) {
+    const pool = vbPool(); if (kind !== 'pair' && pool.length < 4) { toast('범위에 동사가 너무 적습니다. 조건을 넓혀 주세요'); return; }
+    if (kind === 'mean') return startQuiz('동사 · 뜻 퀴즈', vbPick(pool, 15).map((v, i) => qVerbMean(v, pool, i % 2 === 1)));
+    if (kind === 'group') { const ru = pool.filter(v => v.r.endsWith('る')); const ex = ru.filter(v => v.ex); const qs = shuffle(vbPick(ex, 6).concat(vbPick(ru.filter(v => !v.ex), 7), vbPick(pool.filter(v => !v.r.endsWith('る')), 2))); if (!qs.length) { toast('범위에 맞는 동사가 없습니다'); return; } return startQuiz('동사 · 그룹 구분', qs.map(qVerbGroup)); }
+    if (kind === 'pair') { const ids = new Set(pool.map(v => v.id)); let ps = N.VPAIRS.filter(p => ids.has(p.a) || ids.has(p.b)); if (ps.length < 5) ps = N.VPAIRS; return startQuiz('자·타동사 짝', pick(ps, 15).map(qVerbPair)); }
+    // 활용: て·た·ない·ます를 중심으로, 의지 동사는 가능·수동·사역·의지·ば·명령도 섞는다
+    const ks = S.set.vbForm && S.set.vbForm !== 'all' ? S.set.vbForm.split(',').map(Number) : null;
+    const qs = vbPick(pool.filter(v => !v.sp), 15).map(v => { const avail = (ks || [1, 1, 2, 3, 3, 0, 4, 5, 6, 7, 8, 9]).filter(k => v.f[k]); const k = avail.length ? avail[Math.floor(Math.random() * avail.length)] : 1; return qVerbConj(v, k); });
+    startQuiz('동사 · 활용 퀴즈', qs);
+  }
+  VIEWS.vconjmenu = () => {
+    const sets = [['all', '전체 섞어서', 'て·ない 중심으로 모든 형태'], ['1,2', 'て형 · た형', '1그룹 음편(って·んで·いて) 집중'], ['0,3', 'ます형 · ない형', '기본 중의 기본'], ['5', '가능형', '〜できる'], ['6,7', '수동형 · 사역형', 'N4 문법 단골'], ['4,8,9', 'ば형 · 의지형 · 명령형', '가정 · 〜よう · 명령']];
+    return top('활용 퀴즈', '형태 고르기', true) + `<p class="small muted" style="margin-top:14px">연습할 활용 형태를 고르세요. 동사 탭에서 고른 레벨·그룹 범위 안에서 15문제가 나옵니다.</p>
+      <div class="list sec">${sets.map(([k, n, d]) => `<button class="vmenu" data-vbform="${k}"><span class="grow"><b>${n}</b><span class="s" style="display:block;font-size:13px;color:var(--ink-3)">${d}</span></span><span class="muted">→</span></button>`).join('')}</div>`;
+  };
+
   /* ───────── 설정 ───────── */
   VIEWS.settings = () => {
     TTS.load();
@@ -1112,9 +1315,9 @@
     </div></div>
     <div class="sec"><div class="sec-h"><h2>학습 기록 백업</h2></div><div class="panel">
       <p class="small muted" style="margin-top:0">기록은 이 브라우저에만 저장됩니다. 다른 기기로 옮길 때 아래 내용을 복사해 붙여 넣으세요.</p>
-      <textarea id="s-backup" aria-label="백업 데이터">${esc(JSON.stringify({ srs: S.srs, wrong: S.wrong, best: S.best, log: S.log }))}</textarea>
+      <textarea id="s-backup" aria-label="백업 데이터">${esc(JSON.stringify(Object.fromEntries(BK_KEYS.map(k => [k, S[k]]).filter(x => x[1] != null))))}</textarea>
       <div class="row" style="margin-top:8px"><button class="btn grow" data-act="copybk">복사</button><button class="btn grow" data-act="loadbk">붙여 넣은 내용 불러오기</button></div>
-      <div class="row" style="margin-top:8px"><button class="btn ng grow" data-act="reset">${S._confirmReset ? '한 번 더 누르면 모든 기록 삭제' : '모든 학습 기록 초기화'}</button></div>
+      <div class="row" style="margin-top:8px"><button class="btn ng grow" data-act="reset">${confirmReset ? '한 번 더 누르면 모든 기록 삭제' : '모든 학습 기록 초기화'}</button></div>
     </div></div>
     <p class="small muted" style="text-align:center;margin-top:20px">데이터 v${N.version} · 한자 ${N.KANJI.length}자 · 어휘 ${N.VOCAB.length} · 문제 ${N.PROBS.reduce((s, p) => s + p.qs.length, 0)}</p>`;
   };
@@ -1134,6 +1337,10 @@
     if (d.pday != null) { const x = +d.pday, a = S.plan.days; S.plan.days = a.includes(x) ? a.filter(y => y !== x) : a.concat(x).sort(); if (!S.plan.days.length) S.plan.days = [x]; save(); return render(); }
     if (d.chap) return go({ v: 'chapter', n: +d.chap });
     if (d.theme != null) return go({ v: 'theme', i: +d.theme });
+    if (d.verb) return go({ v: 'vdetail', id: d.verb });
+    if (d.vbf) { vbF[d.vbf] = d.val; return render(); }
+    if (d.vbform) { S.set.vbForm = d.vbform; save(); return vbQuiz('conj'); }
+    if (d.vg) { grade(cur().id, +d.vg); toast(['', '모름으로 표시 — 곧 다시 나옵니다', '애매로 표시 — 내일 복습', '앎으로 표시'][+d.vg]); return back(); }
     if (d.li != null) { const i = +d.li; if (i < 0 || i >= lItems().length) return; if (d.rep) { stack.pop(); } return go({ v: 'litem', i }); }
     if (d.lporder) { S.set.lpOrder = d.lporder; save(); document.querySelectorAll('[data-lporder]').forEach(b => b.classList.toggle('on', b.dataset.lporder === d.lporder)); const a = $('#lpa'); if (a) a.pause(); LP.on = false; LP.key = ''; lpBuild(); lpLoad(false); return; }
     if (d.lpgap) { S.set.lpGap = +d.lpgap; save(); document.querySelectorAll('[data-lpgap]').forEach(b => b.classList.toggle('on', b.dataset.lpgap === d.lpgap)); lpShow(); return; }
@@ -1148,6 +1355,12 @@
     switch (d.act) {
       case 'back': return back();
       case 'settings': return go({ v: 'settings' });
+      case 'vbcards': return vbCards();
+      case 'vbmean': return vbQuiz('mean');
+      case 'vbconj': return go({ v: 'vconjmenu' });
+      case 'vbgroup': return vbQuiz('group');
+      case 'vbpair': return vbQuiz('pair');
+      case 'vbguide': return go({ v: 'vguide' });
       case 'listen': return go({ v: 'listen' });
       case 'lplay': return go({ v: 'lplay' });
       case 'lptoggle': return lpToggle();
@@ -1184,12 +1397,13 @@
       case 'tquiz': return themeQuiz(cur().i);
       case 'cquiz': return confuseQuiz();
       case 'copybk': { const ta = $('#s-backup'); const done = () => toast('복사했습니다'); if (navigator.clipboard) navigator.clipboard.writeText(ta.value).then(done, () => { ta.select(); toast('텍스트를 선택했습니다. 직접 복사하세요'); }); else { ta.select(); } return; }
-      case 'loadbk': { try { const o = JSON.parse($('#s-backup').value); ['srs', 'wrong', 'best', 'log'].forEach(k => { if (o[k]) S[k] = o[k]; }); save(); toast('기록을 불러왔습니다'); } catch (err) { toast('형식이 올바르지 않습니다. 복사한 내용을 그대로 붙여 넣으세요'); } return render(); }
-      case 'reset': if (!S._confirmReset) { S._confirmReset = true; render(); setTimeout(() => { S._confirmReset = false; }, 4000); return; } S.srs = {}; S.wrong = {}; S.best = {}; S.log = {}; S._confirmReset = false; save(); toast('모든 기록을 지웠습니다'); return render();
+      case 'loadbk': { try { const o = JSON.parse($('#s-backup').value); if (!o || typeof o !== 'object' || Array.isArray(o)) throw 0; BK_KEYS.forEach(k => { if (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k])) S[k] = o[k]; }); S.plan = Object.assign({}, DEF.plan, S.plan || {}); cleanWrong(); save(); toast('기록을 불러왔습니다'); } catch (err) { toast('형식이 올바르지 않습니다. 복사한 내용을 그대로 붙여 넣으세요'); } return render(); }
+      case 'reset': if (!confirmReset) { confirmReset = true; render(); setTimeout(() => { confirmReset = false; }, 4000); return; } S.srs = {}; S.wrong = {}; S.best = {}; S.log = {}; S.seen = {}; S.listen = {}; S.lheard = {}; S.lpPos = {}; S.plan = Object.assign({}, DEF.plan, { days: S.plan.days, steps: {}, fin: {}, focus: null }); delete S._confirmReset; confirmReset = false; save(); toast('모든 기록을 지웠습니다'); return render();
     }
   });
   document.addEventListener('input', e => {
     const t = e.target;
+    if (t.id === 'vb-q') { vbF.q = t.value.trim(); const pos = t.selectionStart; render(); const n = $('#vb-q'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (err) { } return; }
     if (t.id === 'vsearch') { vSearch = t.value.trim(); const pos = t.selectionStart; render(); const n = $('#vsearch'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (err) { } return; }
     if (t.id === 's-rate') { S.set.rate = +t.value; save(); const d = t.parentElement.querySelector('.d'); if (d) d.textContent = '현재 ' + S.set.rate.toFixed(2) + '배'; }
   });
@@ -1209,11 +1423,12 @@
       if ((e.key === ' ' || e.key === 'Enter') && !session.flip) { e.preventDefault(); session.flip = true; render(); }
       else if (session.flip && ['1', '2', '3'].includes(e.key)) cardGrade(+e.key);
     } else if (v.v === 'quiz' && session && session.i < session.qs.length) {
-      if (session.picked == null && ['1', '2', '3', '4'].includes(e.key)) answer(+e.key - 1);
+      if (session.picked == null && ['1', '2', '3', '4'].includes(e.key) && +e.key <= session.qs[session.i].opts.length) answer(+e.key - 1);
       else if (session.picked != null && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); session.i++; session.picked = null; render(); }
     }
   });
 
+  if (cleanWrong()) save();
   const startTab = (location.hash || '').replace('#', '');
-  setTab(['home', 'plan', 'kanji', 'vocab', 'prob', 'wrong'].includes(startTab) ? startTab : 'home');
+  setTab(['home', 'plan', 'kanji', 'vocab', 'verb', 'prob', 'wrong'].includes(startTab) ? startTab : 'home');
 })();
