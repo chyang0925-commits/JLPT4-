@@ -37,7 +37,7 @@
   /* ───────── 저장소 ───────── */
   const KEY = 'jlpt_n4_v4';
   const DEF = {
-    srs: {}, wrong: {}, best: {}, log: {}, seen: {}, listen: {},
+    srs: {}, wrong: {}, best: {}, log: {}, seen: {}, listen: {}, imp: {},
     set: { rate: 0.85, voice: '', auto: false, furi: true, timer: false, theme: 'system', daily: 10, exam: '2026-12-06', mode: 'course' },
     plan: { days: [0, 1, 3, 5], steps: {}, fin: {}, focus: null },
     migrated: false,
@@ -48,7 +48,7 @@
   if (!S.autoOff1) { S.set.auto = false; S.autoOff1 = true; } // v4.3: 음성은 🔊를 눌렀을 때만
   S.plan = Object.assign({}, DEF.plan, S.plan || {});
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { } };
-  const BK_KEYS = ['srs', 'wrong', 'best', 'log', 'seen', 'listen', 'lheard', 'lpPos', 'plan']; // 백업에 담는 기록 (설정은 기기마다 다르므로 제외)
+  const BK_KEYS = ['srs', 'wrong', 'best', 'log', 'seen', 'listen', 'lheard', 'lpPos', 'plan', 'imp']; // 백업에 담는 기록 (설정은 기기마다 다르므로 제외)
   let confirmReset = false; delete S._confirmReset;
   // 구버전(v3) 오답 기록 이전
   if (!S.migrated && N.LEGACY) {
@@ -251,6 +251,7 @@
     const lv = ['N5', 'N4', '기출', '교재'].map(l => { const list = N.KANJI.filter(k => k.lv === l); return { l, list, c: kanjiStats(list) }; });
     const total = q.dueK.length + q.dueV.length + q.newK.length;
     return top('JLPT N4 한자 암기장', '', false, `${dd >= 0 ? `<span class="chip-dday">D-${dd}</span>` : ''}<button class="icon-btn" data-act="settings" aria-label="설정">⚙</button>`) + `
+    ${homeImpBtn()}
     ${S.set.mode === 'course' ? homeChapterCard() : `<div class="sec"><div class="today">
       <div class="row"><b class="grow">오늘의 학습</b><span class="small">연속 ${streak()}일째</span></div>
       <div class="nums">
@@ -453,7 +454,7 @@
       if (!answered) return `<button class="opt" data-pick="${i}"><span class="n">${i + 1}</span><span class="t ${optCls}">${esc(o.t)}</span></button>`;
       return `<div class="opt ${cls} ${o.say ? 'has-spk' : ''}"><span class="n">${i + 1}</span><span class="t ${optCls}">${esc(o.t)}</span>${o.say ? spkBtn(o.say, 'sm') : ''}${o.note ? `<span class="note">${esc(o.note)}</span>` : ''}</div>`;
     }).join('')}</div>
-      ${answered ? `<div class="fb flash-ok"><div class="res ${okPick ? 'ok' : 'ng'}">${okPick ? '정답입니다' : ses.picked === -1 ? '시간이 지났습니다' : '오답입니다'} — 정답 ${q.ans + 1}번 「${esc(q.opts[q.ans].t)}」</div>${q.explain || ''}${q.sayAfter ? `<div class="row"><span class="grow small muted">정답을 넣은 문장 듣기</span>${spkBtn(q.sayAfter)}</div>` : ''}</div>
+      ${answered ? `<div class="fb flash-ok"><div class="res ${okPick ? 'ok' : 'ng'}">${okPick ? '정답입니다' : ses.picked === -1 ? '시간이 지났습니다' : '오답입니다'} — 정답 ${q.ans + 1}번 「${esc(q.opts[q.ans].t)}」</div>${q.explain || ''}${q.sayAfter ? `<div class="row"><span class="grow small muted">정답을 넣은 문장 듣기</span>${spkBtn(q.sayAfter)}</div>` : ''}${q.wid && impLabel(q.wid) ? `<div class="row" style="margin-top:6px"><button class="istar ${S.imp && S.imp[q.wid] ? 'on' : ''}" data-impstar="${q.wid}">${S.imp && S.imp[q.wid] ? '★ 중요에 담김' : '☆ 중요에 담기'}</button></div>` : ''}</div>
       <div class="sticky-next"><button class="btn pri block" data-act="next">${ses.i + 1 >= ses.qs.length ? '결과 보기' : '다음 문제 →'} <small>(Enter)</small></button></div>` : '<p class="kbd">키보드: 1~4 선택 · Enter 다음</p>'}`;
   };
   function answer(i) {
@@ -1430,6 +1431,152 @@
       <div class="list sec">${sets.map(([k, n, d]) => `<button class="vmenu" data-vbform="${k}"><span class="grow"><b>${n}</b><span class="s" style="display:block;font-size:13px;color:var(--ink-3)">${d}</span></span><span class="muted">→</span></button>`).join('')}</div>`;
   };
 
+  /* ───────── ★ 중요: 자주 틀리는 것 · 헷갈리는 짝 ─────────
+     항목 형식 '단어|읽기|뜻|예문(＿＿ 자리에 단어)' — 뜻이 비면 교재 어휘의 뜻을 쓴다. 음성은 읽기(가나)로. */
+  const IMP_K = [
+    { t: '自動車 · 自転車 · 運動 · 運転', grid: [['', '動', '転'], ['自', '自動車', '自転車'], ['運', '運動', '運転']], note: '動(움직일 동)과 転(구를 전), 自(스스로 자)와 運(옮길 운)을 가로·세로로 맞춰 보면 넷이 한 번에 정리됩니다. 스스로 움직이는 차=自動車, 스스로 굴리는 차=自転車, 옮기며 움직임=運動, 옮기며 굴림=運転.', w: ['自動車|じどうしゃ|자동차', '自転車|じてんしゃ|자전거', '運動|うんどう|운동', '運転|うんてん|운전', '動物|どうぶつ|동물', '動く|うごく|움직이다', '運ぶ|はこぶ|나르다, 옮기다', '転ぶ|ころぶ|넘어지다'] },
+    { t: '館 · 院 — 건물 꼬리', note: '館(かん)은 큰 건물·시설, 院(いん)은 병원 같은 기관입니다. 入院(입원)↔退院(퇴원)은 들 입·물러날 퇴로 구별하세요.', w: ['図書館|としょかん|도서관', '旅館|りょかん|(일본식) 여관', '映画館|えいがかん|영화관', '大使館|たいしかん|대사관', '美術館|びじゅつかん|미술관', '病院|びょういん|병원', '入院|にゅういん|입원', '退院|たいいん|퇴원'] },
+    { t: '会社 · 社会 · 会話 · 会議', note: '会社(회사)와 社会(사회)는 글자 순서만 뒤집힌 짝입니다. 会는 모일 회 — 会話(대화), 会議(회의), 会場(행사장).', w: ['会社|かいしゃ|회사', '社会|しゃかい|사회', '会話|かいわ|회화, 대화', '会議|かいぎ|회의', '会場|かいじょう|회장, 행사장'] },
+    { t: '行 — 읽기가 넷', note: '같은 行인데 旅行(こう) · 銀行(こう) · 急行(こう)은 음독, 行く(い) · 行う(おこな)는 훈독입니다. 行う(행하다)를 いう로 읽지 않도록.', w: ['旅行|りょこう|여행', '銀行|ぎんこう|은행', '急行|きゅうこう|급행', '行く|いく|가다', '行う|おこなう|행하다, 실시하다'] },
+    { t: '出 · 発 · 席', note: '出発(しゅっぱつ)은 촉음 っ가 두 번 생기는 단어입니다(しゅつ+はつ→しゅっぱつ). 出席(しゅっせき)도 같은 원리.', w: ['出発|しゅっぱつ|출발', '出席|しゅっせき|출석', '出口|でぐち|출구', '出る|でる|나가다, 나오다', '出す|だす|내다, 꺼내다', '発音|はつおん|발음'] },
+    { t: '開く · 開ける · 閉める · 閉まる', note: '〜く·〜まる는 저절로(자동사: ドアが), 〜ける·〜める는 누가(타동사: ドアを)입니다. 開く는 ひらく(펼치다)로도 읽습니다.', w: ['開く|あく|열리다', '開ける|あける|열다', '閉まる|しまる|닫히다', '閉める|しめる|닫다', '始まる|はじまる|시작되다', '始める|はじめる|시작하다'] },
+    { t: '気 — 기운 기', note: '人気는 にんき(인기)로 읽습니다. ひとけ(인기척)는 N4 범위 밖이에요.', w: ['天気|てんき|날씨', '元気|げんき|건강함, 기운', '空気|くうき|공기', '病気|びょうき|병', '人気|にんき|인기', '気分|きぶん|기분', '気持ち|きもち|기분, 마음'] },
+    { t: '所 — しょ · じょ · どころ', note: '場所(ばしょ) · 住所(じゅうしょ)는 しょ, 近所(きんじょ)는 じょ, 台所(だいどころ)는 どころ로 탁음이 붙습니다.', w: ['場所|ばしょ|장소', '住所|じゅうしょ|주소', '事務所|じむしょ|사무소', '近所|きんじょ|근처, 이웃', '台所|だいどころ|부엌'] },
+    { t: '電 · 地', note: '電(번개 전)은 전기, 地(땅 지)는 땅에 관한 말. 地下鉄는 ちかてつ, 地震은 じしん(じ 탁음).', w: ['電車|でんしゃ|전철', '電気|でんき|전기, 전등', '電話|でんわ|전화', '地図|ちず|지도', '地下鉄|ちかてつ|지하철', '地震|じしん|지진', '地理|ちり|지리'] },
+  ];
+  const IMP_A = [
+    { t: '〜っかり', note: '뜻이 전부 다릅니다. すっかり=완전히(변화) · しっかり=단단히/확실히 · うっかり=깜빡(실수) · がっかり=실망.', w: ['すっかり||죄다, 완전히|冬になって、＿＿寒くなりました。', 'しっかり||단단히, 확실히|ひもを＿＿結んでください。', 'うっかり|うっかり|깜빡, 무심코|＿＿かさを忘れてしまいました。', 'がっかり|がっかり|실망함|試合に負けて＿＿しました。'] },
+    { t: '〜っきり', note: 'はっきり=분명히(보임·말함), すっきり=개운하게/산뜻하게(기분·정리).', w: ['はっきり||분명히|字を＿＿書いてください。', 'すっきり|すっきり|개운하게, 산뜻하게|部屋を片付けたら＿＿しました。'] },
+    { t: '〜っくり', note: 'ゆっくり=천천히, びっくり=깜짝 놀람, そっくり=꼭 닮음.', w: ['ゆっくり||천천히|もう少し＿＿話してください。', 'びっくり||깜짝 (놀람)|大きな音に＿＿しました。', 'そっくり|そっくり|꼭 닮음|あの子はお父さんに＿＿です。'] },
+    { t: '〜っすり · 〜ったり · 〜っぱり', note: 'ぐっすり는 잠, ぴったり는 크기·시간이 딱 맞음, さっぱり는 산뜻함(또는 ない와 함께 전혀), やっぱり는 역시.', w: ['ぐっすり||푹 (깊이 잠)|昨日は＿＿眠れました。', 'ぴったり|ぴったり|딱 (맞음)|このくつはサイズが＿＿です。', 'さっぱり|さっぱり|산뜻함 · (ない와) 전혀|この問題は＿＿わからない。', 'やっぱり||역시|＿＿この店のラーメンがいちばんだ。'] },
+    { t: '〜っと', note: 'きっと=틀림없이(추측) · ずっと=쭉/훨씬 · もっと=더 · やっと=겨우, 마침내 · ちょっと=조금 · そっと=살짝 · ほっと=안심.', w: ['きっと||틀림없이, 꼭|あしたは＿＿晴れるでしょう。', 'ずっと||쭉, 줄곧 · 훨씬|朝から＿＿雨が降っています。', 'もっと||더, 좀 더|＿＿大きいのはありますか。', 'やっと|やっと|겨우, 마침내|＿＿宿題が終わりました。', 'ちょっと|ちょっと|조금, 잠깐|＿＿待ってください。', 'そっと|そっと|살짝, 조용히|赤ちゃんが寝ているので、＿＿ドアを閉めた。', 'ほっと|ほっと|안심함|試験に合格して＿＿しました。'] },
+    { t: '헷갈리는 부사 짝', note: 'かならず=반드시(규칙·약속) · きっと=틀림없이(추측) · ぜひ=꼭(희망·부탁). ぜんぜん·ちっとも는 뒤에 ない. とうとう·やっと=마침내.', w: ['かならず|かならず|반드시|宿題は＿＿出してください。', 'ぜひ|ぜひ|꼭 (희망)|＿＿遊びに来てください。', 'ぜんぜん|ぜんぜん|전혀 (+ない)|お酒は＿＿飲みません。', 'ちっとも|ちっとも|조금도 (+ない)|この本は＿＿おもしろくない。', 'ほとんど|ほとんど|거의|給料は＿＿使ってしまった。', 'とうとう|とうとう|드디어, 결국|＿＿夏休みが終わった。', 'なかなか|なかなか|좀처럼 (+ない) · 꽤|バスが＿＿来ない。', 'なるべく|なるべく|되도록|＿＿早く来てください。'] },
+  ];
+  const IMP_D = [
+    { t: '뒤 — うしろ · あと · ご · うら', note: '공간의 뒤는 後ろ(うしろ), 시간의 뒤(나중)는 後(あと), 숫자 뒤 「〜후」는 後(ご), 종이·물건의 뒷면은 裏(うら), 몸의 등은 背中(せなか).', w: ['後ろ|うしろ|(공간의) 뒤|駅の＿＿に公園があります。', '後で|あとで|(시간) 나중에|＿＿電話します。', '三日後|みっかご|사흘 후|＿＿にまた会いましょう。', '裏|うら|뒷면, 뒤쪽|紙の＿＿に名前を書いてください。', '背中|せなか|등|＿＿が痛いです。', '奥|おく|안쪽 깊숙한 곳|トイレは店の＿＿です。'] },
+    { t: '앞 — まえ · さき · おもて', note: '前(まえ)는 공간의 앞과 「〜전」 둘 다, 先(さき)는 앞쪽·먼저, 表(おもて)는 앞면·겉.', w: ['前|まえ|앞 · 〜전|駅の＿＿で待っています。', '三年前|さんねんまえ|3년 전|＿＿に日本へ来ました。', '先|さき|앞, 먼저|お＿＿に失礼します。', '表|おもて|앞면, 겉|はがきの＿＿に住所を書きます。'] },
+    { t: '옆 — よこ · となり · そば', note: '横(よこ)는 가로·옆 방향, 隣(となり)는 바로 옆(같은 종류끼리: 집·사람·자리), そば는 곁·가까이.', w: ['横|よこ|옆, 가로|テレビの＿＿に花があります。', '隣|となり|이웃, 바로 옆|＿＿の家に田中さんが住んでいます。', 'そば|そば|곁, 가까이|駅の＿＿のレストラン', '右側|みぎがわ|오른쪽 편|道の＿＿を歩いてください。'] },
+  ];
+  const IMP_V = [
+    { t: 'かして · おして · おしえて · かえして', note: '貸す(빌려주다)↔借りる(빌리다)도 함께. 押して(눌러)와 教えて(가르쳐)는 し 하나 차이입니다.', v: ['貸す', '借りる', '押す', '教える', '返す', '消す', '直す'] },
+    { t: 'かえって · かえして · かえて · かって', note: '帰る(돌아가다)는 1그룹이라 かえって, 返す(돌려주다)는 かえして, 変える(바꾸다)는 2그룹이라 かえて.', v: ['帰る', '返す', '変える', '買う', '勝つ'] },
+    { t: 'きて · きって · きいて · おきて', note: '着る(입다)와 来る(오다)는 둘 다 きて! 切る는 1그룹 예외라 きって, 聞く는 きいて.', v: ['着る', '来る', '切る', '聞く', '起きる', '生きる'] },
+    { t: 'いって · はいって', note: '行く(가다)·言う(말하다)·要る(필요하다)가 모두 いって입니다. 入る(들어가다)는 はいって.', v: ['行く', '言う', '要る', '入る'] },
+    { t: 'とって · とまって · とめて', note: '取る(집다)와 撮る(찍다)는 둘 다 とって. 止まる(멈추다, 자동)는 とまって, 止める(멈추게 하다, 타동)는 とめて.', v: ['取る', '撮る', '止まる', '止める'] },
+    { t: 'おいて · おきて · おりて', note: '置く(두다)→おいて, 起きる(일어나다)→おきて, 降りる(내리다)→おりて.', v: ['置く', '起きる', '降りる'] },
+    { t: 'しめて · しまって · しんで', note: '閉める(닫다, 타동)→しめて, 閉まる(닫히다, 자동)→しまって. 死ぬ는 しんで.', v: ['閉める', '閉まる', '死ぬ'] },
+    { t: 'ないて · ひいて · ふいて · さいて', note: '泣く(울다)와 鳴く(동물이 울다)는 둘 다 ないて. 引く(당기다)·弾く(연주하다)는 둘 다 ひいて.', v: ['泣く', '鳴く', '引く', '弾く', '吹く', '咲く'] },
+    { t: 'まって · もって · うって · まもって', note: '待つ(기다리다)→まって, 持つ(들다)→もって, 打つ(치다)→うって, 守る(지키다)→まもって.', v: ['待つ', '持つ', '打つ', '守る'] },
+  ];
+  const impWord = s => { const [w, r, m, ex] = s.split('|'); const v = N.VOCAB.find(x => x.w === w && (!r || x.r === r)) || N.VOCAB.find(x => x.w === w); return { w, r: r || (v ? v.r : w), m: m || (v ? v.m : ''), ex: ex || '', vid: v ? v.id : null, say: r || (v ? v.r : w) }; };
+  const impVerb = w => { const v = N.VERBS.find(x => x.w === w); return v ? { w: v.f[1][0], r: v.f[1][1], m: v.m, dict: v.w, dr: v.r, vid: v.id, say: v.f[1][1] } : null; };
+  const IMPG = {
+    k: IMP_K.map(g => Object.assign({}, g, { items: g.w.map(impWord) })),
+    a: IMP_A.map(g => Object.assign({}, g, { items: g.w.map(impWord) })),
+    d: IMP_D.map(g => Object.assign({}, g, { items: g.w.map(impWord) })),
+    v: IMP_V.map(g => Object.assign({}, g, { items: g.v.map(impVerb).filter(Boolean) })),
+  };
+  const inProbs = (() => { const t = N.PROBS.map(p => p.qs.map(q => q.s + ' ' + q.o.map(o => o[0]).join(' ')).join(' ')).join(' '); return w => t.includes(w); })();
+  const kanjiParts = w => [...w].filter(c => KMAP[c]).map(c => `<span><b>${c}</b> ${esc(KMAP[c].hun)}</span>`).join('');
+  // 내 오답에서 닮은꼴 자동 찾기: 같은 한자를 쓰는 단어, 읽기가 한 글자만 다른 단어·동사 て형
+  const oneDiff = (a, b) => { if (a === b) return true; if (Math.abs(a.length - b.length) > 1) return false; let i = 0; while (i < a.length && a[i] === b[i]) i++; return a.slice(i + 1) === b.slice(i + 1) || a.slice(i) === b.slice(i + 1) || a.slice(i + 1) === b.slice(i); };
+  function impSimilar(id) {
+    const v = VMAP[id], b = VBMAP[id]; const out = [];
+    if (v) {
+      [...v.w].filter(c => KMAP[c]).forEach(c => N.VOCAB.forEach(x => { if (x.id !== v.id && x.w.includes(c) && out.length < 4 && !out.some(o => o.w === x.w)) out.push({ w: x.w, r: x.r, m: x.m, say: x.r, why: c }); }));
+      N.VOCAB.forEach(x => { if (x.id !== v.id && v.r.length >= 3 && x.r.length >= 3 && oneDiff(x.r, v.r) && out.length < 6 && !out.some(o => o.w === x.w)) out.push({ w: x.w, r: x.r, m: x.m, say: x.r, why: '발음' }); });
+      return { me: { w: v.w, r: v.r, m: v.m, say: v.r }, sim: out };
+    }
+    if (b) {
+      const te = b.f[1][1];
+      N.VERBS.forEach(x => { if (x.id !== b.id && oneDiff(x.f[1][1], te) && out.length < 5) out.push({ w: x.f[1][0], r: x.f[1][1], m: x.m, say: x.f[1][1], why: 'て형' }); });
+      return { me: { w: b.f[1][0], r: te, m: b.m + ' (' + b.w + ')', say: te }, sim: out };
+    }
+    if (id.startsWith('k:')) { const k = KMAP[id.slice(2)]; if (!k) return null; const g = (N.CONFUSE || []).find(c => c.includes(k.k)); const sim = (g || []).filter(c => c !== k.k && KMAP[c]).map(c => ({ w: c, r: KMAP[c].hun, m: '', say: (KMAP[c].kun[0] || KMAP[c].on[0] || c).replace(/[.\-]/g, ''), why: '모양' })); return { me: { w: k.k, r: k.hun, m: '', say: (k.kun[0] || k.on[0] || k.k).replace(/[.\-]/g, '') }, sim }; }
+    return null;
+  }
+  function impLabel(id) {
+    if (id.startsWith('k:')) { const k = KMAP[id.slice(2)]; return k ? { w: k.k, s: k.hun, kanji: k.k } : null; }
+    if (VMAP[id]) return { w: VMAP[id].w, s: VMAP[id].r + ' · ' + VMAP[id].m, say: VMAP[id].r };
+    if (SMAP[id]) return { w: SMAP[id].a, s: '≒ ' + SMAP[id].b };
+    if (VBMAP[id]) return { w: VBMAP[id].w, s: VBMAP[id].r + ' · ' + VBMAP[id].m, verb: id, say: VBMAP[id].r };
+    if (id.startsWith('p:')) { const [pid, qi] = id.slice(2).split('-').map(Number); const p = PMAP[pid]; if (!p || !p.qs[qi]) return null; const q = p.qs[qi]; return { w: q.o[q.a][0], s: TYPE_NAME[p.type] + ' · ' + p.title + ' ' + (qi + 1) + '번', say: q.sa }; }
+    return null;
+  }
+  const impCount = () => Object.keys(S.wrong).filter(k => S.wrong[k] >= 2).length + Object.keys(S.imp || {}).length;
+  function impRow(id, badge) {
+    const L = impLabel(id); if (!L) return '';
+    const open = L.kanji ? `data-kanji="${L.kanji}"` : L.verb ? `data-verb="${L.verb}"` : '';
+    return `<div class="irow"><button class="iw jp" ${open} ${open ? '' : 'disabled'}>${esc(L.w)}</button><span class="grow small" style="min-width:0">${esc(L.s)}</span>${badge || ''}${L.say ? spkBtn(L.say, 'sm') : ''}</div>`;
+  }
+  function impItems(items, opt) {
+    return `<div class="ilist">${items.map(it => `<div class="iitem">
+      <div class="row" style="gap:8px"><b class="jp iw2">${esc(it.w)}</b><span class="jp small muted grow">${it.w !== it.r ? esc(it.r) : ''}</span>${opt && opt.prob && inProbs(it.w) ? '<span class="tag">기출</span>' : ''}${spkBtn(it.say, 'sm')}</div>
+      <div class="small"><b>${esc(it.m)}</b>${it.dict ? ` <span class="muted">· 사전형 ${esc(it.dict)}(${esc(it.dr)})</span>` : ''}</div>
+      ${opt && opt.parts && kanjiParts(it.w) ? `<div class="kparts">${kanjiParts(it.w)}</div>` : ''}
+      ${it.ex ? `<div class="jp small iex">${esc(it.ex).replace('＿＿', `<u>${esc(it.w)}</u>`)}</div>` : ''}
+    </div>`).join('')}</div>`;
+  }
+  function impGroup(g, gi, sec, opt) {
+    const grid = g.grid ? `<div class="igrid">${g.grid.map((row, ri) => row.map((c, ci) => { if (!ri && !ci) return '<span></span>'; if (!ri || !ci) return `<span class="ih"><b>${c}</b><small>${KMAP[c] ? esc(KMAP[c].hun) : ''}</small></span>`; const it = g.items.find(x => x.w === c); return `<span class="ic"><b class="jp">${c}</b><small class="jp">${it ? esc(it.r) : ''}</small><small>${it ? esc(it.m) : ''}</small></span>`; }).join('')).join('')}</div>` : '';
+    return `<div class="sec"><div class="panel ig">
+      <div class="row"><b class="grow jp">${esc(g.t)}</b>${g.items.length >= 3 ? `<button class="more" style="border:0;background:none" data-impq="${sec}" data-gi="${gi}">퀴즈 →</button>` : ''}</div>
+      ${grid}<p class="small" style="margin:8px 0 0;line-height:1.7">${esc(g.note)}</p>
+      ${impItems(g.items, opt)}
+    </div></div>`;
+  }
+  const IMP_TABS = [['me', '내 오답'], ['k', '한자 차이'], ['a', '비슷한 발음'], ['d', '방향·신체'], ['v', '동사 て형']];
+  VIEWS.imp = (vw) => {
+    const sec = vw.sec || (Object.keys(S.wrong).length || Object.keys(S.imp || {}).length ? 'me' : 'k');
+    const tabs = `<div class="itabs">${IMP_TABS.map(([k, n]) => `<button class="${sec === k ? 'on' : ''}" data-impsec="${k}">${n}</button>`).join('')}</div>`;
+    let body = '';
+    if (sec === 'me') {
+      const top = Object.entries(S.wrong).filter(([k]) => impLabel(k)).sort((a, b) => b[1] - a[1]).slice(0, 15);
+      const stars = Object.keys(S.imp || {}).filter(k => impLabel(k)).sort((a, b) => S.imp[b] - S.imp[a]);
+      const sims = Object.entries(S.wrong).filter(([k]) => VMAP[k] || VBMAP[k] || k.startsWith('k:')).sort((a, b) => b[1] - a[1]).map(([k]) => [k, impSimilar(k)]).filter(([, x]) => x && x.sim.length).slice(0, 8);
+      body = `<p class="small muted" style="margin:12px 0 0">문제를 풀거나 카드에서 「모름」을 누르면 여기에 자동으로 쌓입니다. 퀴즈 채점 뒤 「☆ 중요에 담기」를 누르면 직접 넣을 수도 있어요.</p>
+      <div class="sec"><div class="btn-grid"><button class="btn pri" data-act="weak" ${top.length ? '' : 'disabled'}><span>자주 틀린 것 10문항</span><small style="color:inherit;opacity:.8">많이 틀린 순서로</small></button><button class="btn" data-impq="me" ${sims.length ? '' : 'disabled'}><span>닮은꼴 구별 퀴즈</span><small>내 오답 + 닮은 짝</small></button></div></div>
+      ${stars.length ? `<div class="sec"><div class="sec-h"><h2>☆ 직접 담은 것 ${stars.length}</h2></div><div class="list">${stars.map(k => impRow(k, `<button class="ix" data-impdel="${k}" aria-label="빼기">✕</button>`)).join('')}</div></div>` : ''}
+      <div class="sec"><div class="sec-h"><h2>자주 틀린 것</h2><span class="more">틀린 횟수 순</span></div>${top.length ? `<div class="list">${top.map(([k, c]) => impRow(k, `<span class="icnt">${c}회</span>`)).join('')}</div>` : '<p class="small muted">아직 틀린 기록이 없습니다.</p>'}</div>
+      ${sims.length ? `<div class="sec"><div class="sec-h"><h2>내 오답의 닮은꼴</h2><span class="more">같은 한자·비슷한 발음</span></div>${sims.map(([k, x]) => `<div class="panel ig" style="margin-bottom:8px"><div class="row" style="gap:8px"><span class="tag" style="color:var(--ng)">틀림</span><b class="jp iw2">${esc(x.me.w)}</b><span class="jp small muted grow">${esc(x.me.r)} ${x.me.m ? '· ' + esc(x.me.m) : ''}</span>${spkBtn(x.me.say, 'sm')}</div>
+        <div class="ilist">${x.sim.map(s => `<div class="row isim" style="gap:8px"><span class="tag">${esc(s.why)}</span><b class="jp">${esc(s.w)}</b><span class="small muted grow">${esc(s.r)}${s.m ? ' · ' + esc(s.m) : ''}</span>${spkBtn(s.say, 'sm')}</div>`).join('')}</div></div>`).join('')}</div>` : ''}`;
+    } else if (sec === 'd') {
+      const th = n => N.THEMES.findIndex(t => t.name === n);
+      body = `<div class="sec"><div class="btn-grid"><button class="btn pri" data-impq="d"><span>방향 퀴즈</span><small style="color:inherit;opacity:.8">예문 빈칸 채우기</small></button>
+        <button class="btn" data-act="tquizx" data-ti="${th('신체')}"><span>신체 퀴즈</span><small>같은 주제끼리 보기</small></button></div></div>
+        ${IMPG.d.map((g, i) => impGroup(g, i, 'd')).join('')}
+        ${['방향·위치', '신체'].map(n => { const t = N.THEMES[th(n)]; return t ? `<div class="sec"><div class="panel ig"><div class="row"><b class="grow">${n} 한자 ${t.items.length}</b><button class="more" style="border:0;background:none" data-theme="${th(n)}">자세히 →</button></div><div class="tgrid">${t.items.map(it => `<button class="tg" data-kanji="${it.k}"><b class="jp">${it.w}</b><small class="jp">${esc(it.r)}</small><small>${esc(it.m)}</small></button>`).join('')}</div></div></div>` : ''; }).join('')}`;
+    } else {
+      const lead = { k: '공통 한자로 묶어 보면 어디가 다른지 한눈에 보입니다. 한자 아래에 훈음을 붙였습니다.', a: '촉음(っ)이 들어간 부사는 모양이 비슷해 기출 보기에 함께 나옵니다. 「기출」 표시는 교재 확인문제에 나온 것입니다.', v: '사전형은 달라도 て형으로 바꾸면 소리가 같거나 한 글자만 다른 동사들입니다.' }[sec];
+      body = `<p class="small muted" style="margin:12px 0 0">${lead}</p><div class="sec"><button class="btn pri block" data-impq="${sec}">이 탭 전체 퀴즈 15</button></div>` + IMPG[sec].map((g, i) => impGroup(g, i, sec, { parts: sec === 'k', prob: sec === 'a' })).join('');
+    }
+    return top('★ 중요', '자주 틀리는 것 · 헷갈리는 짝', true) + tabs + body;
+  };
+  // 퀴즈: 보기는 같은 묶음 안에서만 → 비슷한 것끼리 구별
+  function impQ(it, group, sec) {
+    const others = shuffle(group.filter(x => x.w !== it.w && x.m !== it.m)).slice(0, 3);
+    if (others.length < 2) return null;
+    const opts = shuffle([it, ...others]).map(x => ({ t: x.w, note: `${x.w !== x.r ? x.r + ' · ' : ''}${x.m}`, say: x.say }));
+    const prompt = sec === 'v' ? `<div class="q-big">${esc(it.m)}</div><div class="q-sub">사전형 ${esc(it.dict)} → て형은?</div>`
+      : it.ex ? `<div class="q-sent">${esc(it.ex).replace('＿＿', '<span class="tblank">（　　）</span>')}</div><div class="q-sub">${esc(it.m)}</div>`
+      : `<div class="q-big">${esc(it.m)}</div>`;
+    return { ins: sec === 'v' ? '알맞은 て형을 고르세요.' : it.ex ? '（　　）에 들어갈 말을 고르세요.' : '뜻에 맞는 말을 고르세요.', prompt, opts, ans: opts.findIndex(o => o.t === it.w), optClass: 'jp', two: true, wid: it.vid || undefined, sayAfter: it.say, time: 15 };
+  }
+  function impQuiz(sec, gi) {
+    let qs = [];
+    if (sec === 'me') {
+      Object.entries(S.wrong).sort((a, b) => b[1] - a[1]).forEach(([k]) => { const x = impSimilar(k); if (!x || x.sim.length < 2 || qs.length >= 15) return; const me = Object.assign({}, x.me, { vid: k, m: x.me.m || x.me.r }); const grp = [me, ...x.sim.map(s => Object.assign({}, s, { m: s.m || s.r }))]; const q = impQ(me, grp, VBMAP[k] ? 'v' : 'k'); if (q) { if (VBMAP[k]) q.prompt = `<div class="q-big">${esc(VBMAP[k].m)}</div><div class="q-sub">사전형 ${esc(VBMAP[k].w)} → て형은?</div>`; qs.push(q); } });
+      return qs.length ? startQuiz('내 오답 닮은꼴', shuffle(qs)) : toast('닮은꼴을 찾을 오답이 아직 없습니다');
+    }
+    const groups = gi != null ? [IMPG[sec][gi]] : IMPG[sec];
+    const pool = groups.flatMap(g => g.items.map(it => [it, g.items.length >= 3 ? g.items : groups.flatMap(x => x.items)]));
+    qs = pick(pool, gi != null ? Math.min(10, pool.length) : 15).map(([it, grp]) => impQ(it, grp, sec)).filter(Boolean);
+    startQuiz('★ ' + (gi != null ? groups[0].t : IMP_TABS.find(t => t[0] === sec)[1]), qs);
+  }
+  function homeImpBtn() {
+    const n = impCount();
+    return `<div class="sec" style="margin-top:12px"><button class="impbtn" data-act="imp"><span class="ist">★</span><span class="grow"><b>중요 · 자주 틀리는 것</b><small>헷갈리는 한자·발음·방향·동사 て형</small></span>${n ? `<span class="ibadge">${n}</span>` : '<span class="muted">→</span>'}</button></div>`;
+  }
   /* ───────── 설정 ───────── */
   VIEWS.settings = () => {
     TTS.load();
@@ -1476,6 +1623,10 @@
     if (d.pday != null) { const x = +d.pday, a = S.plan.days; S.plan.days = a.includes(x) ? a.filter(y => y !== x) : a.concat(x).sort(); if (!S.plan.days.length) S.plan.days = [x]; save(); return render(); }
     if (d.chap) return go({ v: 'chapter', n: +d.chap });
     if (d.theme != null) return go({ v: 'theme', i: +d.theme });
+    if (d.impsec) { cur().sec = d.impsec; render(); window.scrollTo(0, 0); return; }
+    if (d.impq) return impQuiz(d.impq, d.gi != null ? +d.gi : null);
+    if (d.impstar) { S.imp = S.imp || {}; if (S.imp[d.impstar]) delete S.imp[d.impstar]; else S.imp[d.impstar] = Date.now(); save(); toast(S.imp[d.impstar] ? '★ 중요에 담았습니다' : '중요에서 뺐습니다'); return render(); }
+    if (d.impdel) { delete S.imp[d.impdel]; save(); return render(); }
     if (d.verb) return go({ v: 'vdetail', id: d.verb });
     if (d.vbf) { vbF[d.vbf] = d.val; return render(); }
     if (d.vbform) { S.set.vbForm = d.vbform; save(); return vbQuiz('conj'); }
@@ -1495,6 +1646,8 @@
     switch (d.act) {
       case 'back': return back();
       case 'settings': return go({ v: 'settings' });
+      case 'imp': return go({ v: 'imp' });
+      case 'tquizx': return themeQuiz(+d.ti);
       case 'mkexam': case 'mkfull': { const kind = d.act === 'mkexam' ? 'exam' : 'full'; if (planMk !== kind) { planMk = kind; render(); setTimeout(() => { if (planMk === kind) { planMk = null; if (tab === 'plan' && !cur()) render(); } }, 5000); return; } planMk = null; resetCourse(kind); toast(`${PLAN.name}로 새로 짰습니다. 1회차부터 시작하세요`); return render(); }
       case 'exam': return examMock();
       case 'weak': { if (!weakQuiz(10)) toast('틀린 기록이 아직 없습니다'); return; }
