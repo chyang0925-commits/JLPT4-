@@ -45,6 +45,7 @@
   let S;
   try { S = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { S = {}; }
   S = Object.assign({}, DEF, S); S.set = Object.assign({}, DEF.set, S.set || {});
+  if (!S.paper1) { if (S.set.theme === 'system') S.set.theme = 'paper'; S.paper1 = true; } // v4.6: 눈이 덜 피곤한 종이색으로 한 번 전환 (홈의 紙 버튼으로 바꿀 수 있음)
   if (!S.autoOff1) { S.set.auto = false; S.autoOff1 = true; } // v4.3: 음성은 🔊를 눌렀을 때만
   S.plan = Object.assign({}, DEF.plan, S.plan || {});
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { } };
@@ -83,7 +84,7 @@
   const dueList = ids => ids.filter(id => { const s = srs(id); return s && s.due <= Date.now(); });
 
   /* ───────── 테마 ───────── */
-  const applyTheme = () => { const r = document.documentElement; if (S.set.theme === 'system') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', S.set.theme); };
+  const applyTheme = () => { const r = document.documentElement; if (S.set.theme === 'system') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', S.set.theme); r.style.setProperty('--zoom', S.set.fs || 1); const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = getComputedStyle(r).getPropertyValue('--bg').trim() || '#2c4a8c'; };
   applyTheme();
 
   /* ───────── 음성(TTS) ─────────
@@ -250,7 +251,7 @@
     const kc = kanjiStats(N.KANJI);
     const lv = ['N5', 'N4', '기출', '교재'].map(l => { const list = N.KANJI.filter(k => k.lv === l); return { l, list, c: kanjiStats(list) }; });
     const total = q.dueK.length + q.dueV.length + q.newK.length;
-    return top('JLPT N4 한자 암기장', '', false, `${dd >= 0 ? `<span class="chip-dday">D-${dd}</span>` : ''}<button class="icon-btn" data-act="settings" aria-label="설정">⚙</button>`) + `
+    return top('JLPT N4 한자 암기장', '', false, `${dd >= 0 ? `<span class="chip-dday">D-${dd}</span>` : ''}<button class="icon-btn" data-act="themecycle" aria-label="화면 밝기 바꾸기">${({ paper: '紙', light: '☀', dark: '☾', system: '◐' })[S.set.theme] || '◐'}</button><button class="icon-btn" data-act="settings" aria-label="설정">⚙</button>`) + `
     ${homeImpBtn()}
     ${S.set.mode === 'course' ? homeChapterCard() : `<div class="sec"><div class="today">
       <div class="row"><b class="grow">오늘의 학습</b><span class="small">연속 ${streak()}일째</span></div>
@@ -1597,7 +1598,8 @@
       <div class="set-row"><label for="s-mode">학습 방식<span class="d">30회 코스: 일정 탭의 데일리 챕터(약 1시간)로 진도를 나갑니다</span></label><select id="s-mode">${[['course', '30회 코스'], ['free', '자유 학습']].map(([k, n]) => `<option value="${k}" ${S.set.mode === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
       <div class="set-row"><label for="s-daily">하루 새 한자 수<span class="d">자유 학습일 때만 적용</span></label><input id="s-daily" type="number" min="0" max="50" value="${S.set.daily}" style="width:80px"></div>
       <div class="set-row"><label for="s-exam">시험일<span class="d">홈 화면 D-day에 표시</span></label><input id="s-exam" type="date" value="${S.set.exam}"></div>
-      <div class="set-row"><label for="s-theme">화면 테마</label><select id="s-theme">${[['system', '기기 설정'], ['light', '밝게'], ['dark', '어둡게']].map(([k, n]) => `<option value="${k}" ${S.set.theme === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <div class="set-row"><label for="s-fs">글자 크기</label><select id="s-fs">${[['1', '보통'], ['1.08', '조금 크게'], ['1.16', '크게']].map(([k, n]) => `<option value="${k}" ${String(S.set.fs || 1) === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <div class="set-row"><label for="s-theme">화면 테마<span class="d">눈이 피곤하면 「눈 편한 종이색」을 써 보세요</span></label><select id="s-theme">${[['paper', '눈 편한 종이색'], ['light', '밝게'], ['dark', '어둡게'], ['system', '기기 설정 따라가기']].map(([k, n]) => `<option value="${k}" ${S.set.theme === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     </div></div>
     <div class="sec"><div class="sec-h"><h2>학습 기록 백업</h2></div><div class="panel">
       <p class="small muted" style="margin-top:0">기록은 이 브라우저에만 저장됩니다. 다른 기기로 옮길 때 아래 내용을 복사해 붙여 넣으세요.</p>
@@ -1647,6 +1649,7 @@
       case 'back': return back();
       case 'settings': return go({ v: 'settings' });
       case 'imp': return go({ v: 'imp' });
+      case 'themecycle': { const order = ['paper', 'light', 'dark', 'system']; S.set.theme = order[(order.indexOf(S.set.theme) + 1) % order.length]; save(); applyTheme(); toast({ paper: '눈 편한 종이색', light: '밝게', dark: '어둡게 (부드러운 다크)', system: '기기 설정 따라가기' }[S.set.theme]); return render(); }
       case 'tquizx': return themeQuiz(+d.ti);
       case 'mkexam': case 'mkfull': { const kind = d.act === 'mkexam' ? 'exam' : 'full'; if (planMk !== kind) { planMk = kind; render(); setTimeout(() => { if (planMk === kind) { planMk = null; if (tab === 'plan' && !cur()) render(); } }, 5000); return; } planMk = null; resetCourse(kind); toast(`${PLAN.name}로 새로 짰습니다. 1회차부터 시작하세요`); return render(); }
       case 'exam': return examMock();
@@ -1708,10 +1711,10 @@
     if (e.target.id === 'limp' || e.target.id === 'limpd') { importFiles(e.target.files); return; }
     if (e.target.id === 'lp-scope') { S.set.lpScope = e.target.value; save(); const a = $('#lpa'); if (a) a.pause(); LP.on = false; LP.key = ''; lpBuild(); lpLoad(false); return; }
     if (e.target.id === 'lp-qchk') { S.set.lpQ = e.target.checked; save(); lpShow(); return; }
-    const t = e.target; const m = { 's-mode': 'mode', 's-voice': 'voice', 's-auto': 'auto', 's-furi': 'furi', 's-timer': 'timer', 's-daily': 'daily', 's-exam': 'exam', 's-theme': 'theme' }[t.id];
+    const t = e.target; const m = { 's-mode': 'mode', 's-voice': 'voice', 's-auto': 'auto', 's-furi': 'furi', 's-timer': 'timer', 's-daily': 'daily', 's-exam': 'exam', 's-theme': 'theme', 's-fs': 'fs' }[t.id];
     if (!m) return;
     S.set[m] = t.type === 'checkbox' ? t.checked : t.type === 'number' ? Math.max(0, Math.min(50, +t.value || 0)) : t.value;
-    save(); if (m === 'theme') applyTheme(); if (m === 'voice') TTS.say('こんにちは');
+    save(); if (m === 'theme' || m === 'fs') applyTheme(); if (m === 'voice') TTS.say('こんにちは');
   });
   document.addEventListener('keydown', e => {
     if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;

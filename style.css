@@ -6,7 +6,7 @@
   --line: #d5d9d0;
   --ink: #1c2230;       /* 먹색 본문 */
   --ink-2: #545b69;
-  --ink-3: #868c97;
+  --ink-3: #6b7280;
   --ai: #2c4a8c;        /* 藍(남색) 포인트 */
   --ai-soft: #e3e9f6;
   --ok: #23774f;
@@ -21,23 +21,37 @@
   --f-jp: 'Zen Kaku Gothic New', 'Hiragino Sans', 'Yu Gothic', sans-serif;
   --f-ui: 'IBM Plex Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
   --r: 14px;
+  --fill: var(--ai); --on-fill: var(--surface);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #14171d; --surface: #1d2129; --surface-2: #262b35; --line: #343a46;
-    --ink: #e8eaee; --ink-2: #aeb4bf; --ink-3: #7c8390;
-    --ai: #8fa9e6; --ai-soft: #24304b; --ok: #5cc493; --ok-soft: #1c3329;
-    --ng: #ef8a74; --ng-soft: #3d231e; --gold: #e2b25a; --gold-soft: #3a2f1a; --grid: #6b4a44;
+    --bg: #1f2228; --surface: #282c33; --surface-2: #31363f; --line: #3e444e;
+    --ink: #dcdfe4; --ink-2: #b9bfc8; --ink-3: #9aa0ab;
+    --ai: #9db3e3; --ai-soft: #2d3850; --ok: #74c49e; --ok-soft: #243b31;
+    --ng: #e7957f; --ng-soft: #452b26; --gold: #d9b066; --gold-soft: #3d3322; --grid: #7a5a54;
     --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark;
+    --fill: #3a5288; --on-fill: #e6eaf3;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #14171d; --surface: #1d2129; --surface-2: #262b35; --line: #343a46;
-  --ink: #e8eaee; --ink-2: #aeb4bf; --ink-3: #7c8390;
-  --ai: #8fa9e6; --ai-soft: #24304b; --ok: #5cc493; --ok-soft: #1c3329;
-  --ng: #ef8a74; --ng-soft: #3d231e; --gold: #e2b25a; --gold-soft: #3a2f1a; --grid: #6b4a44;
+  --bg: #1f2228; --surface: #282c33; --surface-2: #31363f; --line: #3e444e;
+  --ink: #dcdfe4; --ink-2: #b9bfc8; --ink-3: #9aa0ab;
+  --ai: #9db3e3; --ai-soft: #2d3850; --ok: #74c49e; --ok-soft: #243b31;
+  --ng: #e7957f; --ng-soft: #452b26; --gold: #d9b066; --gold-soft: #3d3322; --grid: #7a5a54;
   --shadow: 0 1px 2px rgba(0,0,0,.3); color-scheme: dark;
+    --fill: #3a5288; --on-fill: #e6eaf3;
 }
+
+/* 눈 편한 종이색: 따뜻한 미색 바탕 + 먹색 글씨 (명암 차이를 조금 줄여 오래 읽어도 덜 피곤하게) */
+:root[data-theme="paper"] {
+  --bg: #f1ebde; --surface: #faf6ee; --surface-2: #ebe4d5; --line: #d8cfbd;
+  --ink: #2f2a22; --ink-2: #554e42; --ink-3: #6e665a;
+  --ai: #3d5a8a; --ai-soft: #e3e6ec; --ok: #2f6e4a; --ok-soft: #e1ecdc;
+  --ng: #a8452f; --ng-soft: #f3e0d6; --gold: #8f6618; --gold-soft: #efe2c6; --grid: #c7ab9e;
+  --shadow: 0 1px 2px rgba(60,45,20,.06), 0 4px 14px rgba(60,45,20,.05); color-scheme: light;
+}
+/* 글자 크기 (설정) */
+#app { zoom: var(--zoom, 1); }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -89,7 +103,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .grow { flex: 1; min-width: 0; }
 
 .btn { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 12px 16px; font-weight: 600; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-.btn.pri { background: var(--ai); border-color: var(--ai); color: var(--surface); }
+.btn.pri { background: var(--fill); border-color: var(--fill); color: var(--on-fill); }
 .btn.ok { background: var(--ok); border-color: var(--ok); color: var(--surface); }
 .btn.ng { background: var(--ng-soft); border-color: transparent; color: var(--ng); }
 .btn.block { width: 100%; }
@@ -110,11 +124,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .tag.use, .tag.mix { background: var(--surface-2); color: var(--ink-2); }
 
 /* ── 오늘 카드 ── */
-.today { background: var(--ai); color: var(--surface); border-radius: 18px; padding: 18px; display: grid; gap: 14px; }
+.today { background: var(--fill); color: var(--on-fill); border-radius: 18px; padding: 18px; display: grid; gap: 14px; }
 .today .nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .today .num b { display: block; font-size: 28px; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .today .num span { font-size: 12px; opacity: .85; }
-.today .btn { background: var(--surface); color: var(--ai); border: 0; }
+.today .btn { background: var(--on-fill); color: var(--fill); border: 0; }
 .bar { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; display: flex; }
 .bar i { display: block; height: 100%; }
 .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--ink-3); margin-top: 6px; }
@@ -277,7 +291,7 @@ textarea { width: 100%; min-height: 120px; font-size: 12px; font-family: ui-mono
 .plan-eta.late { color: var(--ng); }
 .wd { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
 .wd button { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 0; font-weight: 600; }
-.wd button.on { background: var(--ai); border-color: var(--ai); color: var(--surface); }
+.wd button.on { background: var(--fill); border-color: var(--fill); color: var(--on-fill); }
 .route ol { margin: 8px 0; padding-left: 20px; display: grid; gap: 3px; }
 .route li span { font-weight: 700; margin-right: 4px; }
 .chap { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 12px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; text-align: left; width: 100%; }
@@ -285,7 +299,7 @@ textarea { width: 100%; min-height: 120px; font-size: 12px; font-family: ui-mono
 .chap .s { display: block; font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
 .chap .p { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .chap.next { border: 2px solid var(--ai); }
-.chap.next .no { background: var(--ai); color: var(--surface); }
+.chap.next .no { background: var(--fill); color: var(--on-fill); }
 .chap.done .no { background: var(--ok-soft); color: var(--ok); }
 .chap.done { opacity: .8; }
 .focus { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: center; margin-top: 12px; }
@@ -329,7 +343,7 @@ textarea { width: 100%; min-height: 120px; font-size: 12px; font-family: ui-mono
 .lno.ng { background: var(--ng-soft, var(--surface-2)); border-color: var(--ng); color: var(--ng); }
 .lspeed { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .lspeed button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-variant-numeric: tabular-nums; }
-.lspeed button.on { background: var(--ai); border-color: var(--ai); color: var(--surface); }
+.lspeed button.on { background: var(--fill); border-color: var(--fill); color: var(--on-fill); }
 .lpick { display: grid; grid-template-columns: repeat(auto-fit, minmax(56px, 1fr)); gap: 8px; }
 .lpick button { height: 52px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); font-size: 20px; font-weight: 700; }
 .lpick button.ok { background: var(--ok); border-color: var(--ok); color: var(--surface); }
@@ -394,7 +408,7 @@ textarea { width: 100%; min-height: 120px; font-size: 12px; font-family: ui-mono
 .exam-t.low { color: var(--ng); }
 .lscript button.now { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--ai); font-weight: 700; }
 .lscript .btn { padding: 8px 14px; text-align: center; font-size: 14px; line-height: 1.3; }
-.lscript .btn.pri { background: var(--ai); border-color: var(--ai); color: var(--surface); }
+.lscript .btn.pri { background: var(--fill); border-color: var(--fill); color: var(--on-fill); }
 
 /* ── ★ 중요 ── */
 .impbtn { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 14px 16px; border-radius: 16px; border: 2px solid var(--ng); background: var(--surface); }
@@ -403,7 +417,7 @@ textarea { width: 100%; min-height: 120px; font-size: 12px; font-family: ui-mono
 .impbtn .ibadge { min-width: 28px; height: 28px; padding: 0 8px; border-radius: 999px; background: var(--ng); color: var(--surface); display: grid; place-items: center; font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; }
 .itabs { display: flex; gap: 6px; overflow-x: auto; margin-top: 14px; padding-bottom: 4px; scrollbar-width: none; }
 .itabs button { flex: none; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 8px 14px; font-size: 14px; font-weight: 600; }
-.itabs button.on { background: var(--ai); border-color: var(--ai); color: var(--surface); }
+.itabs button.on { background: var(--fill); border-color: var(--fill); color: var(--on-fill); }
 .ig .ilist { display: grid; gap: 8px; margin-top: 12px; }
 .iitem { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 3px; min-width: 0; }
 .iw2 { font-size: 20px; }
